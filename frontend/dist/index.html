@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Intelligent PC Doctor – Offline AI-powered system maintenance and repair assistant." />
+  <title>PC Doctor — Intelligent System Repair</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" crossorigin href="/assets/index-7JUxShMM.css">
+</head>
+<body>
+<svg class="icon-sprite" aria-hidden="true">
+  <!-- Gradient defs for logo glow stroke -->
+  <defs>
+    <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#5ac8fa" />
+      <stop offset="50%"  stop-color="#bf5af2" />
+      <stop offset="100%" stop-color="#ff375f" />
+    </linearGradient>
+  </defs>
+  <symbol id="icon-pulse"     viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></symbol>
+  <symbol id="icon-dashboard" viewBox="0 0 24 24"><path d="M4 5h7v6H4zM13 5h7v4h-7zM13 11h7v8h-7zM4 13h7v6H4z"/></symbol>
+  <symbol id="icon-search"    viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></symbol>
+  <symbol id="icon-tool"      viewBox="0 0 24 24"><path d="m14 6 4 4M5 19l7-7M12 5l7 7-7 7-7-7z"/></symbol>
+  <symbol id="icon-bolt"      viewBox="0 0 24 24"><path d="M13 2 5 14h6l-1 8 9-13h-6z"/></symbol>
+  <symbol id="icon-code"      viewBox="0 0 24 24"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></symbol>
+  <symbol id="icon-monitor"   viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M9 20h6M12 16v4"/></symbol>
+  <symbol id="icon-terminal"  viewBox="0 0 24 24"><path d="m5 8 4 4-4 4M11 17h8"/><rect x="3" y="4" width="18" height="16" rx="2"/></symbol>
+  <symbol id="icon-list"      viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+  <symbol id="icon-folder"    viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="icon-file"      viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="icon-home"      viewBox="0 0 24 24"><path d="M4 11 12 4l8 7"/><path d="M6 10v10h12V10"/></symbol>
+  <symbol id="icon-refresh"   viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M19 11a7 7 0 0 0-12-4M5 13a7 7 0 0 0 12 4"/></symbol>
+  <symbol id="icon-brain"     viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0 0 6v1a3 3 0 0 0 4 2.8"/><path d="M15 4a3 3 0 0 1 3 3v1a3 3 0 0 1 0 6v1a3 3 0 0 1-4 2.8"/><path d="M12 5v14M9 9h6M8 14h8"/></symbol>
+  <symbol id="icon-stop"      viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  <symbol id="icon-check"     viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5"/></symbol>
+  <symbol id="icon-x"         viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></symbol>
+  <symbol id="icon-shield"    viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="icon-chart"     viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 20V10M12 20V4M6 20v-6"/></symbol>
+</svg>
+
+<!-- ═══════════════════════════════════════
+     SIDEBAR
+════════════════════════════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <svg class="logo-icon"><use href="#icon-pulse"></use></svg>
+    <span class="logo-text">PC Doctor</span>
+  </div>
+
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-view="dashboard" id="nav-dashboard">
+      <svg class="nav-icon"><use href="#icon-dashboard"></use></svg> Dashboard
+    </button>
+    <button class="nav-item" data-view="scan" id="nav-scan">
+      <svg class="nav-icon"><use href="#icon-search"></use></svg> Scan
+    </button>
+    <button class="nav-item" data-view="optimize" id="nav-optimize">
+      <svg class="nav-icon"><use href="#icon-bolt"></use></svg> Optimize
+    </button>
+    <button class="nav-item" data-view="devtools" id="nav-devtools">
+      <svg class="nav-icon"><use href="#icon-code"></use></svg> Dev Tools
+    </button>
+    <button class="nav-item" data-view="drivers" id="nav-drivers">
+      <svg class="nav-icon"><use href="#icon-monitor"></use></svg> Drivers
+    </button>
+    <button class="nav-item" data-view="terminal-ai" id="nav-terminal-ai">
+      <svg class="nav-icon"><use href="#icon-terminal"></use></svg> AI Terminal
+    </button>
+    <button class="nav-item" data-view="logs" id="nav-logs">
+      <svg class="nav-icon"><use href="#icon-list"></use></svg> Logs
+    </button>
+  </nav>
+
+  <div class="sidebar-footer">
+    <button type="button" class="os-oval-bar" id="os-oval-bar" data-view="os-adaptation" onclick="openOsAdaptationTab()" title="Open OS Adaptation">
+      <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
+        <span class="os-oval-label" id="os-oval-label">Detecting OS…</span>
+      </div>
+      <span class="os-oval-track"><span class="os-oval-fill" id="os-oval-fill" style="width:0%"></span></span>
+      <span class="os-oval-pct" id="os-oval-pct">0%</span>
+    </button>
+    <div class="os-badge hidden" id="os-badge" aria-hidden="true">Detecting OS…</div>
+  </div>
+</aside>
+
+<!-- ═══════════════════════════════════════
+     MAIN CONTENT
+════════════════════════════════════════ -->
+<div class="main-wrapper">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <h1 class="topbar-title" id="view-title">Dashboard</h1>
+    <div class="topbar-right">
+      <div class="status-dot" id="status-dot" title="Backend status"></div>
+      <span class="status-label" id="status-label">Connecting…</span>
+      <button class="quiet-btn" id="backend-toggle-btn" style="margin-left:0.5rem;">Start Backend</button>
+      <button class="quiet-btn" id="refresh-view-btn" title="Refresh current page" onclick="refreshActiveView()">
+        <svg class="inline-title-icon" style="width:16px;height:16px"><use href="#icon-refresh"></use></svg>
+        Refresh
+      </button>
+      <button class="quiet-btn" id="settings-toggle-btn" style="margin-left:0.5rem;" title="Settings">
+        <svg style="width:16px;height:16px;vertical-align:middle;display:inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── DASHBOARD VIEW ── -->
+  <section class="view active" id="view-dashboard">
+    <div class="resource-switch">
+      <button class="resource-tile active" id="dashboard-cpu-tile" onclick="showDashboardMode('cpu')">
+        <span>CPU</span>
+        <strong id="cpu-ring-val">0%</strong>
+        <small id="cpu-ring-detail">Loading...</small>
+      </button>
+      <button class="resource-tile" id="dashboard-ram-tile" onclick="showDashboardMode('ram')">
+        <span>RAM</span>
+        <strong id="ram-ring-val">0%</strong>
+        <small id="ram-ring-detail">Loading...</small>
+      </button>
+      <button class="resource-tile" id="dashboard-storage-tile" onclick="showDashboardMode('storage')">
+        <span>Storage</span>
+        <strong id="disk-ring-val">0%</strong>
+        <small id="disk-ring-detail">Loading...</small>
+      </button>
+    </div>
+
+    <div class="dashboard-panel wide dashboard-mode active" id="dashboard-cpu-panel">
+      <div class="panel-head">
+        <h2>CPU Apps</h2>
+        <span>Apps sorted by CPU use</span>
+      </div>
+      <div class="app-list" id="linux-cpu-app-list">
+        <div class="empty-row">Loading applications...</div>
+      </div>
+    </div>
+
+    <div class="dashboard-panel wide dashboard-mode" id="dashboard-ram-panel">
+      <div class="panel-head">
+        <h2>RAM Apps</h2>
+        <span>Apps sorted by memory use</span>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="quiet-btn" onclick="boostRam()">Boost RAM</button>
+        </div>
+      </div>
+      <div class="app-list" id="linux-app-list">
+        <div class="empty-row">Loading applications...</div>
+      </div>
+    </div>
+
+    <div class="dashboard-panel wide dashboard-mode" id="dashboard-storage-panel">
+        <div class="panel-head">
+          <h2>File Browser</h2>
+          <span id="storage-mode-label">Home folders are writable. OS folders are protected.</span>
+        </div>
+        <div class="folder-tabs" id="folder-tabs"></div>
+        <div class="folder-path-row">
+          <button class="quiet-btn" id="folder-up-btn" onclick="goFolderUp()">Up</button>
+          <code id="folder-current-path">Loading...</code>
+        </div>
+        <div class="file-actions" id="file-actions">
+          <button class="quiet-btn" onclick="createCurrentFolder()">New Folder</button>
+          <button class="quiet-btn" onclick="createCurrentFile()">New File</button>
+          <span id="file-write-state">Protected</span>
+        </div>
+        <div class="file-list" id="file-list">Loading folders...</div>
+    </div>
+
+    <!-- Self-healing / adaptation panels removed to keep dashboard focused on RAM and Disk only -->
+  </section>
+
+  <!-- ── SCAN VIEW ── -->
+  <section class="view" id="view-scan">
+    <div class="view-header">
+      <p>PC Doctor scans your installed apps and system for real issues. No changes are made — scan is read-only. Start Scan to begin.</p>
+      <div class="scope-container">
+        <label class="scope-card">
+          <input type="checkbox" id="scan-scope-core" checked />
+          <span class="scope-label">Core System &amp; RAM</span>
+        </label>
+        <label class="scope-card">
+          <input type="checkbox" id="scan-scope-dev" checked />
+          <span class="scope-label">Developer Environment</span>
+        </label>
+      </div>
+      <button class="primary-btn" id="btn-scan" onclick="runSequentialScan()">Start Scan</button>
+    </div>
+    
+    <!-- Real-time Scan Progress Container -->
+    <div id="scan-progress-container" class="scan-progress-box hidden">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem; font-weight: 600;">
+        <span id="scan-progress-status">Initializing scan...</span>
+        <span id="scan-progress-pct">0%</span>
+      </div>
+      <div class="modal-progress-track" style="margin-bottom: 1.2rem; background: rgba(255, 255, 255, 0.05); height: 8px;">
+        <div id="scan-progress-fill" class="modal-progress-fill" style="width: 0%; height: 100%;"></div>
+      </div>
+      <div id="scan-steps-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.65rem; font-size: 0.82rem;">
+        <!-- Injected dynamically by JS -->
+      </div>
+    </div>
+
+    <div id="scan-results" class="results-list"></div>
+  </section>
+
+  <!-- ── REPAIR VIEW ── -->
+  <section class="view" id="view-repair">
+    <div class="view-header repair-header">
+      <p class="feature-desc">Fixes common system problems and configuration issues. Browse verified repair recipes — every command is shown before execution.</p>
+      <div class="search-row">
+        <input type="text" id="repair-search" class="search-input" placeholder="Search by name, description, tags, or keywords…" oninput="searchRecipes()" />
+      </div>
+      <div class="repair-count" id="repair-count"></div>
+    </div>
+    <div id="recipe-list" class="results-list recipe-scroll-list"></div>
+  </section>
+
+  <!-- ── OPTIMIZE VIEW ── -->
+  <section class="view" id="view-optimize">
+    <div class="view-header optimize-header">
+      <div class="view-title-block">
+        <h2 class="view-title-text" style="color: var(--apple-orange); text-shadow: 0 0 15px rgba(255, 159, 10, 0.4); display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.5rem 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;">
+          <svg class="inline-title-icon" style="color: var(--apple-orange); filter: drop-shadow(0 0 8px rgba(255,159,10,0.6)); width: 1.25rem; height: 1.25rem;"><use href="#icon-bolt"></use></svg>
+          Optimize System
+        </h2>
+        <p class="feature-desc" style="margin: 0; color: var(--text-2); font-size: 0.9rem;">Improves system performance using OS-specific optimization commands. Actions free up resources and speed up your PC.</p>
+      </div>
+    </div>
+    <div class="card-grid" id="optimize-grid">
+      <!-- Populated by JS -->
+    </div>
+  </section>
+
+  <!-- ── DEV TOOLS VIEW ── -->
+  <section class="view" id="view-devtools">
+    <div class="view-header">
+      <div class="view-title-block">
+        <h2 class="view-title-text" style="color: var(--apple-purple); text-shadow: 0 0 15px rgba(191, 90, 242, 0.4); display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.5rem 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;">
+          <svg class="inline-title-icon" style="color: var(--apple-purple); filter: drop-shadow(0 0 8px rgba(191,90,242,0.6)); width: 1.25rem; height: 1.25rem;"><use href="#icon-code"></use></svg>
+          Dev Tools
+        </h2>
+        <p class="feature-desc" style="margin: 0; color: var(--text-2); font-size: 0.9rem;">Suggests development-related tools and utilities. Live status of installed developer tools — missing tools can be fixed instantly.</p>
+      </div>
+    </div>
+
+    <!-- Real-time search for developer tools -->
+    <div style="margin-top: 1.2rem; margin-bottom: 1.2rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+      <input type="text" id="devtools-search" class="search-input" placeholder="Search developer tools &amp; GUI apps natively supported on your OS..." oninput="searchDevTools()" style="flex: 1 1 300px; margin: 0; padding: 0.75rem 1rem; border-radius: var(--radius); border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.25); color: var(--text-1);" />
+    </div>
+
+    <div class="card-grid" id="devtools-grid">
+      <!-- Populated by JS with live status badges -->
+    </div>
+
+    <!-- AI DevOps Recommendations Section -->
+    <div style="margin-top: 3.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <h2 style="font-size: 1.4rem; color: var(--accent-a); margin: 0; display: flex; align-items: center; gap: .5rem;">
+          <svg class="inline-title-icon"><use href="#icon-brain"></use></svg> AI DevOps Suggestions
+        </h2>
+        <p style="color: var(--text-2); font-size: .85rem; margin-top: .2rem;">Personalized packages suggested dynamically based on your currently installed stack.</p>
+      </div>
+      <button class="primary-btn" style="padding: .45rem 1rem; font-size: .8rem; background: linear-gradient(135deg, rgba(99,102,241,.2), rgba(139,92,246,.25)); border: 1px solid rgba(139,92,246,.4);" onclick="loadAppSuggestions(true)">Refresh Suggestions</button>
+    </div>
+    <div class="card-grid" id="devtools-suggestions">
+      <!-- Populated dynamically with smart app recommendations -->
+    </div>
+  </section>
+
+  <!-- ── SHCE CONTROL CENTER VIEW ── -->
+  <section class="view" id="view-os-adaptation">
+    <div class="view-header shce-header">
+      <div class="view-title-block">
+        <h2 class="view-title-text" style="color: var(--apple-orange); text-shadow: 0 0 15px rgba(255, 159, 10, 0.4); display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.5rem 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;">
+          Control Center
+        </h2>
+        <p class="feature-desc" style="margin: 0; color: var(--text-2); font-size: 0.9rem;">Control Center — monitors failures, generates repair candidates, and learns from every fix.</p>
+      </div>
+    </div>
+
+    <!-- ── Stat tiles ── -->
+    <div class="shce-tiles-row" id="shce-tiles-row">
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-green);"><use href="#icon-check"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="shce-core-status">Active</div>
+          <div class="shce-tile-label">Core Status</div>
+        </div>
+      </div>
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-blue);"><use href="#icon-shield"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="shce-safety-status">All Safe</div>
+          <div class="shce-tile-label">Safety Layer</div>
+        </div>
+      </div>
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-orange);"><use href="#icon-bolt"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="shce-repairs-count">0</div>
+          <div class="shce-tile-label">Auto-Repairs</div>
+        </div>
+      </div>
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-cyan);"><use href="#icon-chart"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="shce-success-rate">—</div>
+          <div class="shce-tile-label">Success Rate</div>
+        </div>
+      </div>
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-orange);"><use href="#icon-refresh"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="shce-queue-depth">0</div>
+          <div class="shce-tile-label">Pending Fixes</div>
+        </div>
+      </div>
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-purple);"><use href="#icon-brain"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="shce-kb-size">0</div>
+          <div class="shce-tile-label">KB Entries</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab bar ── -->
+    <div class="shce-tab-bar" role="tablist">
+      <button class="shce-tab active" id="shce-tab-overview"    onclick="switchSHCETab('overview')"    role="tab">
+        <svg class="nav-icon" style="width: 14px; height: 14px; margin-right: 5px; vertical-align: middle;"><use href="#icon-dashboard"></use></svg>Overview
+      </button>
+      <button class="shce-tab"        id="shce-tab-queue"       onclick="switchSHCETab('queue')"       role="tab">
+        <svg class="nav-icon" style="width: 14px; height: 14px; margin-right: 5px; vertical-align: middle;"><use href="#icon-tool"></use></svg>Repair Queue <span class="shce-badge" id="shce-queue-badge">0</span>
+      </button>
+      <button class="shce-tab"        id="shce-tab-errors"      onclick="switchSHCETab('errors')"      role="tab">
+        <svg class="nav-icon" style="width: 14px; height: 14px; margin-right: 5px; vertical-align: middle;"><use href="#icon-pulse"></use></svg>Error Monitor
+      </button>
+      <button class="shce-tab"        id="shce-tab-knowledge"   onclick="switchSHCETab('knowledge')"   role="tab">
+        <svg class="nav-icon" style="width: 14px; height: 14px; margin-right: 5px; vertical-align: middle;"><use href="#icon-brain"></use></svg>Knowledge Base
+      </button>
+      <button class="shce-tab"        id="shce-tab-history"     onclick="switchSHCETab('history')"     role="tab">
+        <svg class="nav-icon" style="width: 14px; height: 14px; margin-right: 5px; vertical-align: middle;"><use href="#icon-list"></use></svg>History
+      </button>
+      <button class="shce-tab"        id="shce-tab-environment" onclick="switchSHCETab('environment')" role="tab">
+        <svg class="nav-icon" style="width: 14px; height: 14px; margin-right: 5px; vertical-align: middle;"><use href="#icon-monitor"></use></svg>Environment
+      </button>
+    </div>
+
+    <!-- ── Tab: Overview ── -->
+    <div class="shce-panel-section active" id="shce-section-overview">
+      <div class="shce-section-header">
+        <div class="shce-section-header-content">
+          <h2>System Overview</h2>
+          <p>Live system status, adaptation progress, and Control Center health metrics.</p>
+        </div>
+      </div>
+      <div class="adaptation-grid">
+        <div class="adaptation-panel">
+          <h2>System Information</h2>
+          <div id="adaptation-system-info" class="adaptation-info-block">Loading…</div>
+        </div>
+        <div class="adaptation-panel">
+          <h2>Adaptation Progress</h2>
+          <div id="adaptation-progress-bars" class="adaptation-progress-block">Loading…</div>
+        </div>
+        <div class="adaptation-panel wide">
+          <h2>Control Center Status</h2>
+          <div id="shce-overview-body" class="shce-overview-grid">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Repair Queue ── -->
+    <div class="shce-panel-section" id="shce-section-queue">
+      <div class="shce-section-header">
+        <div class="shce-section-header-content">
+          <h2>Repair Queue</h2>
+          <p>Fixes generated by the Control Center. Review and approve to execute.</p>
+        </div>
+        <div class="shce-section-header-actions">
+          <!-- Actions slot — kept symmetric with other tabs for layout consistency -->
+        </div>
+      </div>
+      <div class="shce-grid" id="shce-queue-list">
+        <div class="shce-empty-row">Queue is empty — failures trigger new entries automatically.</div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Error Monitor ── -->
+    <div class="shce-panel-section" id="shce-section-errors">
+      <div class="shce-section-header">
+        <div class="shce-section-header-content">
+          <h2>Error Intelligence Monitor</h2>
+          <p>All captured command failures and active system diagnostic alerts.</p>
+        </div>
+        <div class="shce-section-header-actions">
+          <button class="action-btn shce-tab-action-btn" id="shce-clear-resolved-btn" onclick="clearResolvedLogs()" disabled>Clear Log</button>
+        </div>
+      </div>
+      <div class="shce-grid" id="shce-error-log">
+        <div class="shce-empty-row">No errors logged yet.</div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Knowledge Base ── -->
+    <div class="shce-panel-section" id="shce-section-knowledge">
+      <div class="shce-section-header">
+        <h2>Adaptive Knowledge Base</h2>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+          <input type="text" id="shce-kb-search" class="shce-search-input" placeholder="Search fixes…" oninput="filterKBTable(this.value)" />
+          <span style="font-size:.8rem;color:var(--text-3);" id="shce-kb-count">0 entries</span>
+        </div>
+      </div>
+      <div id="shce-rag-graph-container" style="display: none;">
+        <canvas id="shce-rag-canvas"></canvas>
+        <div id="shce-rag-status" style="position: absolute; bottom: 8px; right: 12px; font-size: 0.72rem; color: var(--apple-cyan, #5ac8fa); font-family: var(--mono); text-shadow: 0 0 5px rgba(90, 200, 250, 0.4); pointer-events: none;">Searching RAG Knowledge Embeddings...</div>
+      </div>
+      <div class="shce-table-wrap">
+        <table class="shce-table" id="shce-kb-table">
+          <thead>
+            <tr>
+              <th>Error Pattern</th><th>Fix Command</th><th>OS</th>
+              <th>Confidence</th><th>Status</th><th>Source</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="shce-kb-body">
+            <tr><td colspan="7" class="shce-empty-row">No knowledge base entries yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Tab: History ── -->
+    <div class="shce-panel-section" id="shce-section-history">
+      <div class="shce-section-header">
+        <div class="shce-section-header-content">
+          <h2>Control Center Execution History</h2>
+          <p>Outcome archive of all executed, rejected, and failed repair actions.</p>
+        </div>
+        <button class="action-btn" id="shce-clear-history-btn" style="padding:.35rem .85rem;font-size:.78rem;margin-left:.5rem;" onclick="clearAllHistory()" title="Delete all history entries">Clear History</button>
+      </div>
+      <div class="shce-grid" id="shce-history-list">
+        <div class="shce-empty-row">No completed repairs yet.</div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Environment ── -->
+    <div class="shce-panel-section" id="shce-section-environment">
+      <div class="shce-section-header">
+        <h2>Live Environment Profile</h2>
+        <button class="action-btn" style="padding:.35rem .85rem;font-size:.78rem;" onclick="loadSHCEEnvironment()">Refresh</button>
+      </div>
+      <div class="shce-env-grid" id="shce-env-grid">Loading…</div>
+    </div>
+  </section>
+
+  <!-- ── DRIVERS VIEW ── -->
+  <section class="view" id="view-drivers">
+    <div class="view-header">
+      <p class="feature-desc">Displays hardware and driver information with live GPU usage. Detects integrated and dedicated GPUs and recommends the right driver update path.</p>
+      <button class="primary-btn" id="btn-drivers" onclick="loadDrivers(true)">Scan Drivers</button>
+    </div>
+    <div id="gpu-usage-card"></div>
+    <div id="drivers-results" class="results-list">
+      <div class="issue-card">
+        <div class="issue-body">
+          <div class="issue-title" style="color:var(--text-2)">Click "Scan Drivers" to detect your GPU and check for driver updates.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── AI TERMINAL VIEW (Agentic) ── -->
+  <section class="view" id="view-terminal-ai">
+    <div class="agent-header">
+      <div class="agent-badge">
+        <svg class="inline-title-icon"><use href="#icon-terminal"></use></svg>
+        <span>AI Agent Mode</span>
+        <span class="agent-badge-pill">TERMINAL</span>
+      </div>
+      <p class="agent-desc">Describe any PC problem in plain English. The AI will diagnose it, propose terminal commands, and execute fixes step-by-step using autonomous diagnostics.</p>
+    </div>
+
+    <!-- Ollama service status control -->
+    <div class="ollama-service-control-bar" style="margin-bottom:1.2rem; padding:0.8rem 1rem; border-radius:var(--radius); background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <span class="status-indicator-dot" id="ollama-service-status-dot" style="width:10px; height:10px; border-radius:50%; background:#94a3b8; display:inline-block; transition: background 0.3s ease;"></span>
+        <span id="ollama-service-status-text" style="font-size:0.85rem; font-weight:600; color:var(--text-2);">Ollama Server: Checking status...</span>
+      </div>
+      <button class="action-btn" id="btn-ollama-service-toggle" style="margin:0; padding:0.35rem 0.8rem; font-size:0.75rem;" onclick="toggleOllamaService()">Start Server</button>
+    </div>
+
+    <!-- Agent conversation terminal -->
+    <div class="agent-terminal" id="agent-terminal">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
+        <span class="terminal-title">PC Doctor Agent Terminal</span>
+        <button class="terminal-clear-btn" onclick="clearAgentTerminal()">Clear</button>
+      </div>
+      <div class="terminal-body" id="agent-terminal-body">
+        <div class="agent-msg agent-msg-bot">
+          <span class="agent-prompt">agent&gt;</span>
+          <div class="agent-text">Hello! I'm your AI repair agent. Tell me what's broken on your PC and I'll diagnose the problem and run the fixes for you — step by step, with your approval before each command.<br><br>
+          <em style="color:var(--text-3)">Examples: "My pip is broken", "Docker won't start", "Python PATH is messed up", "Clean up my system"</em>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input row -->
+    <div class="agent-input-row">
+      <select class="model-select" id="agent-model-select">
+        <option value="phi3:mini">phi3:mini</option>
+        <option value="llama3">llama3</option>
+        <option value="gemma">gemma</option>
+        <option value="mistral">mistral</option>
+        <option value="deepseek-r1">deepseek-r1</option>
+        <option value="codellama">codellama</option>
+        <option value="qwen2.5">qwen2.5</option>
+      </select>
+      <input type="text" id="agent-input" class="ai-input" placeholder="Describe your problem… (e.g. 'pip is broken and Python gives errors')"
+        onkeydown="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendAgentMessage(); }" />
+      <button class="primary-btn agent-send-btn" onclick="sendAgentMessage()" id="agent-send-btn">
+        <span>Run Agent</span>
+      </button>
+    </div>
+
+    <!-- Ollama Model Management Panel -->
+    <div class="ollama-panel-container">
+      <button class="ollama-toggle-btn" id="ollama-toggle-btn" onclick="toggleOllamaPanel()">Ollama Models ▼</button>
+      <div class="ollama-panel-wrap hidden" id="ollama-panel-wrap">
+        <div class="ollama-panel-header">
+          <span>Quick commands for managing your local AI models. Editable commands load into the input field so you can type the model name first.</span>
+        </div>
+        <div class="ollama-panel" id="ollama-panel">
+          <!-- Populated by renderOllamaPanel() in JS -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+
+  <!-- ── LOGS VIEW ── -->
+  <section class="view" id="view-logs">
+    <div class="view-header">
+      <p>Every action PC Doctor performs is recorded here for full transparency.</p>
+      <div class="log-toolbar">
+        <button class="action-btn" onclick="deleteAllLogs()">Delete All Logs</button>
+        <button class="action-btn" onclick="loadPerformanceMetrics()" title="Show performance diagnostics" style="background:rgba(99,102,241,.12);border-color:rgba(99,102,241,.3);color:#a5b4fc;">📊 Metrics</button>
+      </div>
+    </div>
+    <!-- Performance metrics panel (collapsed by default) -->
+    <div id="perf-metrics-panel" class="hidden" style="margin-bottom:1.2rem;padding:1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius);font-size:.82rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
+        <strong style="color:var(--text-1)">📊 Performance Diagnostics</strong>
+        <button class="quiet-btn" style="padding:.2rem .5rem;font-size:.72rem;" onclick="$('perf-metrics-panel').classList.add('hidden')">✕ Close</button>
+      </div>
+      <div id="perf-metrics-body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.65rem;">
+        Loading…
+      </div>
+    </div>
+    <div class="log-list" id="log-list" role="log" aria-live="polite">Loading logs…</div>
+    <pre class="log-box hidden" id="log-box" aria-hidden="true"></pre>
+  </section>
+
+</div>
+
+<!-- ═══════════════════════════════════════
+     COMMAND MODAL (transparency dialog)
+════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal-card glass" id="modal-card">
+    <div class="modal-header">
+      <h2 id="modal-title">Repair Action</h2>
+      <span class="risk-badge" id="modal-risk-badge">Low Risk</span>
+    </div>
+
+    <table class="detail-table">
+      <tr><td>Command</td><td><code id="modal-command"></code></td></tr>
+      <tr><td>Purpose</td><td id="modal-purpose"></td></tr>
+      <tr><td>Affects</td><td id="modal-affects"></td></tr>
+    </table>
+
+    <div class="edu-box" id="edu-box">
+      <!-- Educational explanation injected by JS -->
+    </div>
+
+    <!-- Real-time Progress Bar & Status Steps Checklist -->
+    <div class="modal-progress-container hidden" id="modal-progress-container">
+      <div class="modal-progress-track">
+        <div class="modal-progress-fill" id="modal-progress-fill"></div>
+      </div>
+      <div class="modal-progress-percentage" id="modal-progress-percentage">0%</div>
+      <div class="modal-status-checklist" id="modal-status-checklist">
+        <!-- Injected status steps -->
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModalBtn()">Cancel</button>
+      <button class="btn-run" id="btn-run-confirm" onclick="confirmRun()">Run This Command</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     AGENT COMMAND APPROVAL MODAL
+════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="agent-modal-overlay" onclick="closeAgentModal(event)">
+  <div class="modal-card glass" id="agent-modal-card" style="max-width:560px">
+    <div class="modal-header">
+      <h2 id="agent-modal-title">AI Suggested Command</h2>
+      <span class="risk-badge" id="agent-modal-risk">Low Risk</span>
+    </div>
+    <div class="agent-modal-purpose" id="agent-modal-purpose"></div>
+    <div class="terminal-cmd-preview" id="agent-modal-cmd"></div>
+    <div class="modal-footer" style="margin-top:1.4rem">
+      <button class="btn-cancel" onclick="closeAgentModalBtn()">Skip</button>
+      <button class="btn-run" id="agent-modal-run-btn" onclick="confirmAgentCommand()">Run Command</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     STARTUP SERVICES MODAL
+════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="startup-modal-overlay" onclick="closeStartupModal(event)">
+  <div class="modal-card glass" id="startup-modal-card" style="max-width: 600px; width: 90%;">
+    <div class="modal-header">
+      <h2>Startup Services Manager</h2>
+      <span class="risk-badge Low">Systemd Services</span>
+    </div>
+    <p style="font-size: 0.85rem; color: var(--text-2); margin-bottom: 1rem; line-height: 1.4;">
+      Below are services currently set to start automatically at boot. Disabling non-essential services can significantly improve boot speeds and free up memory.
+    </p>
+    <div id="startup-list" style="max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 1.2rem; padding-right: 0.3rem;">
+      <!-- Populated by JS -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeStartupModalBtn()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Result toast -->
+<div class="toast hidden" id="toast"></div>
+
+<!-- ── SETTINGS DRAWER ── -->
+<div class="settings-drawer-overlay" id="settings-drawer-overlay"></div>
+<div class="settings-drawer" id="settings-drawer">
+  <div class="drawer-header">
+    <h2>
+      <svg style="width:20px;height:20px;vertical-align:middle;display:inline-block;margin-right:0.3rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+      Settings
+    </h2>
+    <button class="drawer-close" id="settings-close-btn">&times;</button>
+  </div>
+  <div class="drawer-content">
+    <div class="setting-group">
+      <h3>Interface Theme</h3>
+      <p class="setting-desc">Switch between light and dark glassmorphic styles.</p>
+      <div class="theme-options">
+        <button class="theme-btn active" id="theme-dark-btn" onclick="setTheme('dark')">Dark Theme</button>
+        <button class="theme-btn" id="theme-light-btn" onclick="setTheme('light')">Light Theme</button>
+      </div>
+    </div>
+    <div class="setting-group">
+      <h3>Backend Services</h3>
+      <p class="setting-desc">Toggle background diagnostics and repair engine.</p>
+      <div class="setting-row">
+        <span id="drawer-backend-status-label">Backend is offline</span>
+        <button class="action-btn" id="drawer-backend-toggle-btn" style="margin:0;padding:.4rem .9rem;font-size:.8rem;">Start</button>
+      </div>
+    </div>
+
+
+    <div class="setting-group">
+      <h3>Help Center</h3>
+      <p class="setting-desc">Overview, setup guide, feature explanations, and troubleshooting.</p>
+      <button class="action-btn" id="settings-help-btn" onclick="toggleHelpCenter()">Open Help</button>
+      <div class="help-panel hidden" id="settings-help-panel"></div>
+    </div>
+
+
+  </div>
+</div>
+
+<!-- ── GSAP + ScrollTrigger (local bundle — no CDN dependency) ── -->
+<script src="gsap.min.js"></script>
+<script src="ScrollTrigger.min.js"></script>
+<script src="main.js"></script>
+<script src="animations.js"></script>
+</body>
+</html>

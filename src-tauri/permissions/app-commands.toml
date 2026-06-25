@@ -1,0 +1,24 @@
+[[permission]]
+identifier = "allow-start-backend"
+description = "Allows invoking the start_backend command"
+commands = { allow = ["start_backend"] }
+
+[[permission]]
+identifier = "allow-stop-backend"
+description = "Allows invoking the stop_backend command"
+commands = { allow = ["stop_backend"] }
+
+[[permission]]
+identifier = "allow-get-backend-status"
+description = "Allows invoking the get_backend_status command"
+commands = { allow = ["get_backend_status"] }
+
+[[permission]]
+identifier = "allow-fetch-api"
+description = "Allows invoking the fetch_api command"
+commands = { allow = ["fetch_api"] }
+
+[[permission]]
+identifier = "allow-log-console"
+description = "Allows invoking the log_console command"
+commands = { allow = ["log_console"] }

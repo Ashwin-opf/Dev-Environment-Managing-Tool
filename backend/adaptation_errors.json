@@ -1,0 +1,218 @@
+[
+  {
+    "timestamp": "2026-06-09T04:30:30.262351Z",
+    "source": "optimize",
+    "command": "sudo apt update && sudo apt upgrade -y",
+    "error": "Safe mode blocked a kernel, driver, service, or full-system update command. Disable PC_DOCTOR_SAFE_MODE only in an isolated test environment. On a host machine, leave safe mode disabled and set PC_DOCTOR_ALLOW_HOST_SYSTEM_CHANGES=1 only if you fully understand the risk.",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-09T04:30:57.860380Z",
+    "source": "optimize",
+    "command": "sudo apt update && sudo apt upgrade -y",
+    "error": "Safe mode blocked a kernel, driver, service, or full-system update command. Disable PC_DOCTOR_SAFE_MODE only in an isolated test environment. On a host machine, leave safe mode disabled and set PC_DOCTOR_ALLOW_HOST_SYSTEM_CHANGES=1 only if you fully understand the risk.",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-09T04:33:17.105640Z",
+    "source": "repair",
+    "command": "curl -sSL https://ollama.ai/install.sh | sudo bash",
+    "error": "b'>>> Cleaning up old version at /usr/local/lib/ollama\\n>>> Installing ollama to /usr/local\\n>>> Downloading ollama-linux-amd64.tar.zst\\n#=#=#                                                                          \\r##O#-#                                                                         \\r##O=#  #                                                                       \\r#=#=-#  #                                                                      \\r\\r                                  ...",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-09T04:33:57.226690Z",
+    "source": "optimize",
+    "command": "sudo apt update && sudo apt upgrade -y",
+    "error": "Safe mode blocked a kernel, driver, service, or full-system update command. Disable PC_DOCTOR_SAFE_MODE only in an isolated test environment. On a host machine, leave safe mode disabled and set PC_DOCTOR_ALLOW_HOST_SYSTEM_CHANGES=1 only if you fully understand the risk.",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-09T04:50:21.946980Z",
+    "source": "optimize",
+    "command": "sudo apt update && sudo apt upgrade -y",
+    "error": "Safe mode blocked a kernel, driver, service, or full-system update command. Disable PC_DOCTOR_SAFE_MODE only in an isolated test environment. On a host machine, leave safe mode disabled and set PC_DOCTOR_ALLOW_HOST_SYSTEM_CHANGES=1 only if you fully understand the risk.",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-19T09:28:27.876620Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-19T09:55:06.522210Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-19T09:56:20.796759Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-20T03:29:26.750971Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-20T03:29:39.631689Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-20T09:32:35.212560Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-20T09:32:48.136045Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T03:46:33.813164Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T03:46:47.396721Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T03:47:52.830432Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T03:48:05.993146Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T03:59:43.759496Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T03:59:57.019931Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T04:13:16.161959Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T04:13:29.686096Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T08:41:12.317587Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-22T08:41:26.167285Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-23T08:55:24.827851Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-23T08:55:38.200095Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-23T09:27:52.861012Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-23T09:28:07.125508Z",
+    "source": "repair",
+    "command": "false",
+    "error": "E2E custom failure test",
+    "correction": "",
+    "correction_status": ""
+  },
+  {
+    "timestamp": "2026-06-25T01:14:29.367653Z",
+    "source": "repair",
+    "command": "temp_cleanup",
+    "error": "'temp_cleanup' is not recognized as an internal or external command,\noperable program or batch file.",
+    "correction": "",
+    "correction_status": ""
+  }
+]

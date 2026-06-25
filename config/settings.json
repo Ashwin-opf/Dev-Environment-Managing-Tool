@@ -1,0 +1,12 @@
+{
+  "selected_model": "phi",
+  "backend_port": 8765,
+  "theme": "dark",
+  "educational_mode": true,
+  "auto_scan_on_start": false,
+  "log_level": "info",
+  "package_managers": {
+    "windows": ["winget", "chocolatey"],
+    "linux": ["apt", "dnf", "pacman"]
+  }
+}

@@ -1,0 +1,1602 @@
+[
+  {
+    "timestamp": "2026-06-22T03:53:49.796027Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:58:46.182078Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:05.243178Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:13.056289Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:19.614996Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:26.076217Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:31.237915Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:37.777818Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:45.418813Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T03:59:51.398431Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:00:16.839428Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:02:40.281103Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:02:40.281940Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-22T04:02:45.336615Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:02:45.337782Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-22T04:02:54.599196Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:02:54.600044Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-22T04:03:45.342328Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:07:30.729264Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:08:26.406760Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:08:33.716643Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:10:34.335780Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:10:38.122666Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:11:03.030933Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:11:03.031996Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-22T04:12:07.380995Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:12:38.619062Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:12:45.871555Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:12:52.348474Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:12:58.627563Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:13:03.900616Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:13:10.243974Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:13:18.038309Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:13:23.905756Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:14:52.171410Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:18:16.144410Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:22:09.148139Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:22:42.456617Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:25:00.915176Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T04:28:10.224501Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:40:17.702303Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:40:31.296762Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:40:41.054948Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:40:47.305503Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:40:53.910079Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:40:59.689868Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:41:06.331958Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:41:14.475047Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:41:20.565621Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:45:04.628248Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:46:40.689798Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:54:42.785457Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T08:57:08.070816Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T09:00:58.149060Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T09:06:53.006969Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T10:04:02.328101Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-22T10:47:38.815261Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:54:44.973126Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:54:53.411463Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:55:00.157387Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:55:06.729869Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:55:12.224259Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:55:18.849465Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:55:26.484240Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:55:32.589676Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T08:59:28.069521Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:04:32.039593Z",
+    "event": "execute",
+    "generic": "Agent Command",
+    "converted": "sudo apt update -y",
+    "status": "success",
+    "detail": "Agent Command completed successfully!"
+  },
+  {
+    "timestamp": "2026-06-23T09:04:33.246620Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:04:33.248007Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-23T09:06:49.689371Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:06:49.690967Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-23T09:07:02.197695Z",
+    "event": "execute",
+    "generic": "Agent Command",
+    "converted": "sudo apt install snapd -y",
+    "status": "success",
+    "detail": "Agent Command completed successfully!"
+  },
+  {
+    "timestamp": "2026-06-23T09:07:03.457585Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:07:03.460179Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-23T09:07:21.124126Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:07:21.126770Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-23T09:09:53.465157Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:09:53.467592Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-23T09:12:16.148878Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:12:16.153000Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-23T09:12:16.334692Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:26:08.890516Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:26:18.111633Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:26:25.168638Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:26:31.680393Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:26:38.492092Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:27:07.728753Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:27:20.032333Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:27:27.173126Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:27:34.414820Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:27:39.894786Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:27:46.949360Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:27:54.970697Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T09:28:01.388510Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:04:21.303581Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:04:58.978785Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:04:58.980272Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-23T10:30:21.954986Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:31:21.579152Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:31:23.957073Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:31:27.528874Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:31:30.550074Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:32:09.244501Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:32:18.891389Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:32:42.291076Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:32:50.712971Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:33:40.886515Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:33:46.655434Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:33:52.407269Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-23T10:36:16.078738Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T03:48:34.240423Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:27:14.303642Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:28:49.957875Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:28:49.958753Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:29:07.591102Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:29:07.591925Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:29:23.631961Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:29:23.632920Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:30:23.467027Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:30:23.467763Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:30:36.662255Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:30:36.663262Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:30:50.450268Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:30:50.451275Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:31:09.411310Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:31:09.412094Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:31:22.838881Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:31:22.839876Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:31:49.904514Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:31:49.905324Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:48:35.189507Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:51:14.981356Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:51:14.982271Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T04:51:37.649967Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T04:51:37.651007Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T05:37:24.206415Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:37:39.794586Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:37:59.249190Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:38:22.634721Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:45:33.763187Z",
+    "event": "execute",
+    "generic": "System Package Updates",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "System Package Updates completed successfully!"
+  },
+  {
+    "timestamp": "2026-06-24T05:45:36.258560Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:45:36.260905Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T05:45:42.931785Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:45:42.933587Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T05:45:44.301728Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:45:44.304212Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T05:51:51.319306Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:51:51.320911Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T05:51:51.513887Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:52:10.082677Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Zorin OS 18.1",
+    "status": "success",
+    "detail": "Package manager: APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:52:10.086183Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "APT",
+    "status": "success",
+    "detail": "Loaded 8 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-24T05:52:10.269816Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T05:59:18.789261Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T06:13:57.356235Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T06:29:50.677528Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T06:30:04.420146Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T06:30:16.895143Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T06:30:29.359620Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-24T06:30:39.604821Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "sudo apt update && sudo apt upgrade -y",
+    "status": "success",
+    "detail": "APT"
+  },
+  {
+    "timestamp": "2026-06-25T00:08:41.110304Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:17:30.011177Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:17:30.024395Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T00:17:43.455567Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:17:43.462363Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:30.861957Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:30.863964Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:30.952754Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:41.912869Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:41.929143Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:42.087566Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:53.774408Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:53.792380Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T00:20:53.907909Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:12:15.424018Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:26.102957Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:26.138432Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:26.935888Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:26.970751Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:27.295841Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:27.323142Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:27.616785Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:27.650824Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:28.498075Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:28.525255Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:30.809279Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:30.844833Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:31.108459Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:31.143102Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:31.414343Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T01:19:31.448865Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T01:34:50.628103Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T02:17:25.959203Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T02:17:37.849808Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T02:26:14.384726Z",
+    "event": "execute",
+    "generic": "Install java",
+    "converted": "winget install --id Oracle.JDK.21 --exact --silent",
+    "status": "success",
+    "detail": "Install java completed successfully!"
+  },
+  {
+    "timestamp": "2026-06-25T02:26:18.071413Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-06-25T02:26:18.078403Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-06-25T10:20:25.866010Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T10:23:00.840334Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T10:43:48.008382Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-06-25T10:52:37.281349Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  }
+]
