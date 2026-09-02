@@ -2489,6 +2489,91 @@ class SHCEOrchestrator:
 
         return {"ok": rc == 0, "stdout": stdout, "stderr": stderr, "returncode": rc, "status": status}
 
+    def stream_execute_queued_fix(self, queue_id: int):
+        """
+        Execute the selected candidate from the SHCE queue and stream output events in real-time.
+        Yields events: {"type": "log"|"progress"|"done", ...}
+        """
+        from self_healing import SafetyClassificationLayer
+        from repair_engine import RepairEngine
+        from feature_flags import ENABLE_DEV_MODE
+
+        item = self.error_db.get_queue_item(queue_id)
+        if not item:
+            yield {"type": "log", "text": f"Queue item {queue_id} not found", "stream": "stderr"}
+            yield {"type": "done", "ok": False, "error": f"Queue item {queue_id} not found", "returncode": -1}
+            return
+
+        command = item.get("selected_candidate") or ""
+        if not command:
+            yield {"type": "log", "text": "No command selected for this queue item", "stream": "stderr"}
+            yield {"type": "done", "ok": False, "error": "No command selected", "returncode": -1}
+            return
+
+        safety_class = SafetyClassificationLayer.classify(command)
+        if safety_class == "Blocked":
+            self.error_db.update_queue_item(queue_id, "rejected", stderr="Blocked by safety layer", rc=-1)
+            yield {"type": "log", "text": "Command blocked by safety layer", "stream": "stderr"}
+            yield {"type": "done", "ok": False, "error": "Command blocked by safety layer", "returncode": -1}
+            return
+
+        self.error_db.update_queue_item(queue_id, "executing")
+        yield {"type": "log", "text": f"Executing fix for repair #{queue_id}: {command}", "stream": "stdout"}
+
+        if ENABLE_DEV_MODE:
+            stdout = "Mock execution successful in Dev Mode."
+            stderr = ""
+            rc = 0
+            yield {"type": "log", "text": stdout, "stream": "stdout"}
+            yield {"type": "progress", "percent": 100, "detail": "Completed"}
+            yield {"type": "done", "ok": True, "returncode": 0, "stdout": stdout, "stderr": stderr}
+        else:
+            engine = RepairEngine(Path(self.db_path))
+            full_stdout = ""
+            full_stderr = ""
+            rc = 0
+            for event in engine.stream_run(command, trigger_shce=False):
+                if event["type"] == "done":
+                    full_stdout = event.get("stdout", "")
+                    full_stderr = event.get("stderr", "")
+                    rc = event.get("returncode", 0)
+                yield event
+
+            status = "executed" if rc == 0 else "failed"
+            self.error_db.update_queue_item(queue_id, status, stdout=full_stdout, stderr=full_stderr, rc=rc)
+
+            if rc == 0:
+                try:
+                    import sqlite3
+                    from self_healing import DB_PATH
+                    conn = sqlite3.connect(DB_PATH)
+                    conn.execute(
+                        "UPDATE self_healing_attempts SET result = 'Healing Successful' "
+                        "WHERE attempted_fix = ? OR attempted_fix = ? OR error_source = ?",
+                        (command, item.get("command", ""), item.get("command", ""))
+                    )
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    print("Failed to sync self_healing_attempts:", e)
+
+                try:
+                    from self_healing import self_healing_mgr
+                    env = EnvironmentProfiler.snapshot()
+                    original_error = item.get("error", "")
+                    self_healing_mgr.record_knowledge(
+                        os_name=env["os_name"],
+                        os_version="",
+                        kernel_version=env["kernel"],
+                        error_pattern=ErrorIntelligenceDB._signature(original_error),
+                        successful_fix=command,
+                        default_fallback=item.get("command", ""),
+                        source="SHCE Auto-Repair",
+                        success=True,
+                    )
+                except Exception:
+                    pass
+
     def get_dashboard_data(self) -> Dict[str, Any]:
         """Returns all data needed for the SHCE Control Center UI."""
         queue = self.error_db.get_queue(limit=20)

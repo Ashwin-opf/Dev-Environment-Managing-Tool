@@ -1,0 +1,5 @@
+{
+  "devtools_install": "always_require_approval",
+  "devtools_update": "always_allow",
+  "system_cleanup": "default"
+}

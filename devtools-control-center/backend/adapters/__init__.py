@@ -1,0 +1,3 @@
+"""
+Package manager adapter module.
+"""

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -e
+
+echo ""
+echo "  ????????????????????????????????????????????"
+echo "  ?   DevEngine ? DevTools & Control Center  ?"
+echo "  ????????????????????????????????????????????"
+echo ""
+
+# Find Python
+if command -v python3 &>/dev/null; then
+    PYTHON=python3
+elif command -v python &>/dev/null; then
+    PYTHON=python
+else
+    echo "  [ERROR] Python 3 is not installed."
+    echo "  Install it from: https://www.python.org/downloads/"
+    exit 1
+fi
+
+echo "  [INFO] Using: $PYTHON ($($PYTHON --version 2>&1))"
+
+# Install dependencies
+echo "  [INFO] Checking dependencies..."
+$PYTHON -m pip install -q fastapi uvicorn[standard] psutil requests pydantic httpx 2>/dev/null || true
+echo "  [INFO] Dependencies OK."
+echo ""
+
+# Start server
+echo "  [INFO] Starting server at http://127.0.0.1:8790"
+echo "  [INFO] Press Ctrl+C to stop."
+echo ""
+$PYTHON backend/main.py

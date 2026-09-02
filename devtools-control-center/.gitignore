@@ -1,0 +1,34 @@
+# Python virtual environment — DO NOT commit
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Generated SQLite databases (auto-created on first run)
+backend/knowledge.db
+backend/resolution_cache.db
+backend/pc_doctor.db
+
+# Machine-specific snapshots (contain absolute paths)
+backend/snapshots/
+
+# Machine-specific runtime state files (auto-created, never share)
+backend/control_center_audit.json
+backend/control_center_queue.json
+backend/devtools_managed_apps.json
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+
+# Scratch / dev-only files
+scratch/
+*.zip

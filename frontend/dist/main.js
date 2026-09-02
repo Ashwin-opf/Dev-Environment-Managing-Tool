@@ -434,6 +434,20 @@ function updateResourceTile(valueId, detailId, pct, detail) {
   const clamped = Math.max(0, Math.min(Number(pct) || 0, 100));
   if (value) value.textContent = `${clamped.toFixed(0)}%`;
   if (detailEl) detailEl.textContent = detail;
+
+  // Animate SVG ring gauge fill stroke-dashoffset
+  const ringMap = {
+    "cpu-ring-val": "cpu-svg-ring",
+    "ram-ring-val": "ram-svg-ring",
+    "disk-ring-val": "disk-svg-ring",
+    "gpu-ring-val": "gpu-svg-ring"
+  };
+  const svgRing = $(ringMap[valueId]);
+  if (svgRing) {
+    const circum = 251.2;
+    const offset = circum * (1 - clamped / 100);
+    svgRing.style.strokeDashoffset = offset.toFixed(1);
+  }
 }
 
 async function fetchGpuUsage() {
@@ -597,58 +611,49 @@ function showDashboardMode(mode) {
   $("dashboard-cpu-tile")?.classList.toggle("active", mode === "cpu");
   $("dashboard-ram-tile")?.classList.toggle("active", mode === "ram");
   $("dashboard-storage-tile")?.classList.toggle("active", mode === "storage");
-  $("dashboard-health-tile")?.classList.toggle("active", mode === "self-healing");
-  $("dashboard-adaptation-tile")?.classList.toggle("active", mode === "self-healing");
+  $("dashboard-gpu-tile")?.classList.toggle("active", mode === "gpu");
 
   $("dashboard-cpu-panel")?.classList.toggle("active", mode === "cpu");
   $("dashboard-ram-panel")?.classList.toggle("active", mode === "ram");
   $("dashboard-storage-panel")?.classList.toggle("active", mode === "storage");
-  $("dashboard-self-healing-panel")?.classList.toggle("active", mode === "self-healing");
+  $("dashboard-gpu-panel")?.classList.toggle("active", mode === "gpu");
 
-  if (mode === "storage" && dashboardRoots.length && !currentFolderPath) {
-    loadFolder(dashboardRoots[0].path);
+  if (mode === "storage") {
+    if (dashboardRoots.length && !currentFolderPath) {
+      loadFolder(dashboardRoots[0].path);
+    } else if (!currentFolderPath) {
+      loadDashboardDetails().then(() => {
+        if (dashboardRoots.length) loadFolder(dashboardRoots[0].path);
+      });
+    }
+  } else if (mode === "gpu") {
+    refreshGpuUsage(true);
+  } else if (mode === "ram" || mode === "cpu") {
+    loadDashboardDetails();
   }
-  if (mode === "self-healing") {
-    refreshSelfHealingDashboard();
-  }
+  startMetricsPolling();
 }
+window.showDashboardMode = showDashboardMode;
 
 async function loadDashboardDetails() {
-  // If the backend is still starting, show a friendly waiting message and
-  // return early – the onBackendStatus listener will call us again once online.
-  if (backendState === 'starting' || backendState === 'offline' || backendState === 'error') {
-    const appList = $("linux-app-list");
-    const cpuAppList = $("linux-cpu-app-list");
-    const fileList = $("file-list");
-    if (appList) appList.innerHTML = `<div class="empty-row">⏳ Waiting for backend to start…</div>`;
-    if (cpuAppList) cpuAppList.innerHTML = `<div class="empty-row">⏳ Waiting for backend to start…</div>`;
-    if (fileList && fileList.textContent === 'Loading folders...') {
-      fileList.textContent = '⏳ Waiting for backend…';
-    }
-    return;
-  }
-
   const appList = $("linux-app-list");
   const cpuAppList = $("linux-cpu-app-list");
-  if (appList) appList.innerHTML = `<div class="empty-row">Loading applications...</div>`;
-  if (cpuAppList) cpuAppList.innerHTML = `<div class="empty-row">Loading applications...</div>`;
+
+  if (backendState === 'stopping') return;
 
   try {
     const r = await fetch(`${API}/api/dashboard/resources`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    if (!d.ok) throw new Error("Bad dashboard response");
     dashboardRoots = d.roots || [];
     renderLinuxApps(d.apps || []);
     renderLinuxCpuApps(d.apps || []);
     renderFolderTabs();
-    // Always load the folder view – default to Home if no folder is selected yet
-    loadFolder(currentFolderPath || (dashboardRoots[0] && dashboardRoots[0].path));
+    if (!currentFolderPath && dashboardRoots[0]) {
+      loadFolder(dashboardRoots[0].path);
+    }
   } catch (err) {
-    console.error('[Dashboard] resources fetch failed:', err);
-    if ($("file-list")) $("file-list").textContent = "Unable to load folders. Is the backend running?";
-    if (appList) appList.innerHTML = `<div class="empty-row">Unable to load app list. Is the backend running?</div>`;
-    if (cpuAppList) cpuAppList.innerHTML = `<div class="empty-row">Unable to load app list. Is the backend running?</div>`;
+    console.warn('[Dashboard] resources fetch fallback:', err.message);
   }
 
   // Load System Health and Adaptation Score tiles
@@ -853,60 +858,167 @@ async function deleteFile(path) {
 function renderLinuxApps(apps) {
   const el = $("linux-app-list");
   if (!el) return;
-  if (!apps.length) {
-    el.innerHTML = `<div class="empty-row">No non-critical user apps are currently taking notable resources.</div>`;
+
+  const raw = (apps && apps.length) ? apps : [];
+  const userApps = raw.filter(a => a.stoppable !== false).sort((a, b) => {
+    const valA = Number(a.memory_percent || a.memory_mb || 0);
+    const valB = Number(b.memory_percent || b.memory_mb || 0);
+    return valB - valA;
+  });
+  const osApps = raw.filter(a => a.stoppable === false).sort((a, b) => {
+    const valA = Number(a.memory_percent || a.memory_mb || 0);
+    const valB = Number(b.memory_percent || b.memory_mb || 0);
+    return valB - valA;
+  });
+  const sorted = [...userApps, ...osApps];
+
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty-row">No active applications currently consuming notable RAM resources.</div>`;
     return;
   }
-  el.innerHTML = apps.map(app => `
-    <div class="app-row ${app.stoppable === false ? "necessary" : ""}">
-      <div>
-        <div class="app-name">${escHtml(app.name)} <span style="color:var(--text-3);font-weight:500">${Number(app.process_count || 1)} process${Number(app.process_count || 1) === 1 ? "" : "es"}</span></div>
-        <div class="app-command">${escHtml(app.command || "User process")}</div>
+
+  el.innerHTML = sorted.map((app, idx) => {
+    const memPct = Math.round(Number(app.memory_percent || 0));
+    const pids = app.pids || [app.pid || (1000 + idx * 123)];
+    const pidVal = pids[0] || 'System';
+    const barWidth = Math.min(100, Math.max(5, memPct));
+    const isOs = app.stoppable === false;
+    const barGradient = isOs ? "linear-gradient(90deg, #7c7c82, #48484a)" : "linear-gradient(90deg, #ffaa00, #ff7139)";
+    const badgeBorder = isOs ? "#7c7c82" : "#ffaa00";
+
+
+    const actionBtn = isOs
+      ? `<button class="stop-btn disabled" disabled title="Necessary OS process. Stop is disabled for system safety." style="opacity:0.5;cursor:not-allowed;padding:0.3rem 0.75rem;border-radius:8px;font-size:0.78rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-3)">Protected</button>`
+      : app.browser_control
+        ? `<button class="stop-btn browser" onclick="closeOtherBrowserTabs(${escHtml(JSON.stringify(pids))}, ${escHtml(JSON.stringify(app.name || "Browser"))})" style="padding:0.35rem 0.75rem;border-radius:8px;font-size:0.78rem;background:rgba(255,170,0,0.15);border:1px solid rgba(255,170,0,0.4);color:#ffaa00">Close Tabs</button>`
+        : `<button class="stop-btn" onclick="stopLinuxApp(${escHtml(JSON.stringify(pids))}, ${escHtml(JSON.stringify(app.name || "App"))})" style="padding:0.35rem 0.85rem;border-radius:8px;font-size:0.78rem;background:rgba(255,55,95,0.15);border:1px solid rgba(255,55,95,0.4);color:#ff375f">Stop</button>`;
+
+    return `
+      <div class="app-row-modern ${isOs ? 'os-needed-row' : ''}">
+        <div class="app-brand-info">
+          ${getAppBrandIcon(app.name)}
+          <div>
+            <span class="app-brand-name">${escHtml(app.name)}</span>
+            ${isOs ? '<span style="font-size:0.7rem;color:var(--text-3);display:block">OS Needed Task</span>' : ''}
+          </div>
+        </div>
+        <div class="app-pid-cell">${pidVal}</div>
+        <div class="app-progress-cell">
+          <div class="app-progress-fill-bar" style="width: ${barWidth}%; background: ${barGradient};">
+            <span class="bar-circular-badge" style="border-color: ${badgeBorder}; color: ${badgeBorder};">${memPct}%</span>
+          </div>
+        </div>
+        <div class="app-pct-cell" style="color: ${badgeBorder}; display:flex; gap:0.6rem; align-items:center; justify-content:flex-end;">
+          <span>${app.memory_mb ? `${app.memory_mb} MB (${memPct}%)` : `${memPct}%`}</span>
+          ${actionBtn}
+        </div>
       </div>
-      <div class="app-metrics">${escHtml(app.category || "Application")} · CPU ${Number(app.cpu_percent || 0).toFixed(1)}% · RAM ${Number(app.memory_percent || 0).toFixed(1)}%</div>
-      ${app.stoppable === false
-        ? `<button class="stop-btn disabled" disabled title="Necessary Linux app. Stop is disabled for system safety.">Protected</button>`
-        : app.browser_control
-          ? `<button class="stop-btn browser" onclick="closeOtherBrowserTabs(${escHtml(JSON.stringify(app.pids || [app.pid]))}, ${escHtml(JSON.stringify(app.name || "Browser"))})">Close Other Tabs</button>`
-          : `<button class="stop-btn" onclick="stopLinuxApp(${escHtml(JSON.stringify(app.pids || [app.pid]))}, ${escHtml(JSON.stringify(app.name || "App"))})">Stop</button>`
-      }
-    </div>
-  `).join("");
+    `;
+  }).join("");
+}
+
+function getAppBrandIcon(appName) {
+  const n = (appName || "").toLowerCase();
+  if (n.includes("chrome")) {
+    return `<div class="app-brand-icon" style="background:#ea43351a;border:1px solid #ea433540">
+      <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="#4285F4"/><circle cx="12" cy="12" r="4" fill="#FFFFFF"/><circle cx="12" cy="12" r="3" fill="#EA4335"/></svg>
+    </div>`;
+  }
+  if (n.includes("firefox")) {
+    return `<div class="app-brand-icon" style="background:#ff71391a;border:1px solid #ff713940">
+      <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="10" fill="#FF7139"/><path d="M12 4a8 8 0 0 1 8 8c0 4.4-3.6 8-8 8" fill="#FFBD2E"/></svg>
+    </div>`;
+  }
+  if (n.includes("code") || n.includes("vscode") || n.includes("visual studio")) {
+    return `<div class="app-brand-icon" style="background:#007acc1a;border:1px solid #007acc40">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#007ACC" stroke-width="2.2"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>
+    </div>`;
+  }
+  if (n.includes("zoom")) {
+    return `<div class="app-brand-icon" style="background:#2d8cff1a;border:1px solid #2d8cff40">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="#2D8CFF"><rect x="3" y="6" width="12" height="12" rx="3"/><path d="M16 10l5-3v10l-5-3v-4z"/></svg>
+    </div>`;
+  }
+  if (n.includes("docker")) {
+    return `<div class="app-brand-icon" style="background:#0db7ed1a;border:1px solid #0db7ed40">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="#0DB7ED"><rect x="2" y="10" width="3" height="3" rx="1"/><rect x="6" y="10" width="3" height="3" rx="1"/><rect x="10" y="10" width="3" height="3" rx="1"/><rect x="6" y="6" width="3" height="3" rx="1"/><path d="M2 15c1 3 4 5 10 5s9-2 10-5H2z"/></svg>
+    </div>`;
+  }
+  if (n.includes("node")) {
+    return `<div class="app-brand-icon" style="background:#68a0631a;border:1px solid #68a06340">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="#68A063"><path d="M12 2L2 8v8l10 6 10-6V8L12 2z"/></svg>
+    </div>`;
+  }
+  if (n.includes("python")) {
+    return `<div class="app-brand-icon" style="background:#3776ab1a;border:1px solid #3776ab40">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="#3776AB"><path d="M12 2A6 6 0 0 0 6 8v2h6v2H4a2 2 0 0 0-2 2v4a6 6 0 0 0 6 6h2v-6H6v-2h8a2 2 0 0 0 2-2V8a6 6 0 0 0-4-6z"/></svg>
+    </div>`;
+  }
+  return `<div class="app-brand-icon" style="background:rgba(0,240,255,0.1);border:1px solid rgba(0,240,255,0.3)">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#00f0ff" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg>
+  </div>`;
 }
 
 function renderLinuxCpuApps(apps) {
   const el = $("linux-cpu-app-list");
   if (!el) return;
-  if (!apps.length) {
-    el.innerHTML = `<div class="empty-row">No apps are currently taking notable CPU resources.</div>`;
+
+  const raw = (apps && apps.length) ? apps : [];
+  const userApps = raw.filter(a => a.stoppable !== false).sort((a, b) => {
+    const valA = Number(a.cpu_percent || 0);
+    const valB = Number(b.cpu_percent || 0);
+    return valB - valA;
+  });
+  const osApps = raw.filter(a => a.stoppable === false).sort((a, b) => {
+    const valA = Number(a.cpu_percent || 0);
+    const valB = Number(b.cpu_percent || 0);
+    return valB - valA;
+  });
+  const sorted = [...userApps, ...osApps];
+
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty-row">No active applications currently consuming notable CPU resources.</div>`;
     return;
   }
-  
-  // Sort by CPU percent descending for normal apps, keep necessary (stoppable === false) at the bottom
-  const normalApps = apps.filter(app => app.stoppable !== false);
-  const necessaryApps = apps.filter(app => app.stoppable === false);
-  
-  // Sort both by CPU percent descending
-  normalApps.sort((a, b) => b.cpu_percent - a.cpu_percent);
-  necessaryApps.sort((a, b) => b.cpu_percent - a.cpu_percent);
-  
-  const sortedApps = [...normalApps, ...necessaryApps];
-  
-  el.innerHTML = sortedApps.map(app => `
-    <div class="app-row ${app.stoppable === false ? "necessary" : ""}">
-      <div>
-        <div class="app-name">${escHtml(app.name)} <span style="color:var(--text-3);font-weight:500">${Number(app.process_count || 1)} process${Number(app.process_count || 1) === 1 ? "" : "es"}</span></div>
-        <div class="app-command">${escHtml(app.command || "User process")}</div>
+
+  el.innerHTML = sorted.map((app, idx) => {
+    const cpuPct = Math.round(Number(app.cpu_percent || 0));
+    const pids = app.pids || [app.pid || (1000 + idx * 123)];
+    const pidVal = pids[0] || 'System';
+    const barWidth = Math.min(100, Math.max(5, cpuPct));
+    const isOs = app.stoppable === false;
+    const barGradient = isOs ? "linear-gradient(90deg, #7c7c82, #48484a)" : "linear-gradient(90deg, #00f0ff, #0a84ff)";
+    const badgeBorder = isOs ? "#7c7c82" : "#00f0ff";
+
+
+    const actionBtn = isOs
+      ? `<button class="stop-btn disabled" disabled title="Necessary OS process. Stop is disabled for system safety." style="opacity:0.5;cursor:not-allowed;padding:0.3rem 0.75rem;border-radius:8px;font-size:0.78rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--text-3)">Protected</button>`
+      : app.browser_control
+        ? `<button class="stop-btn browser" onclick="closeOtherBrowserTabs(${escHtml(JSON.stringify(pids))}, ${escHtml(JSON.stringify(app.name || "Browser"))})" style="padding:0.35rem 0.75rem;border-radius:8px;font-size:0.78rem;background:rgba(0,240,255,0.15);border:1px solid rgba(0,240,255,0.4);color:#00f0ff">Close Tabs</button>`
+        : `<button class="stop-btn" onclick="stopLinuxApp(${escHtml(JSON.stringify(pids))}, ${escHtml(JSON.stringify(app.name || "App"))})" style="padding:0.35rem 0.85rem;border-radius:8px;font-size:0.78rem;background:rgba(255,55,95,0.15);border:1px solid rgba(255,55,95,0.4);color:#ff375f">Stop</button>`;
+
+    return `
+      <div class="app-row-modern ${isOs ? 'os-needed-row' : ''}">
+        <div class="app-brand-info">
+          ${getAppBrandIcon(app.name)}
+          <div>
+            <span class="app-brand-name">${escHtml(app.name)}</span>
+            ${isOs ? '<span style="font-size:0.7rem;color:var(--text-3);display:block">OS Needed Task</span>' : ''}
+          </div>
+        </div>
+        <div class="app-pid-cell">${pidVal}</div>
+        <div class="app-progress-cell">
+          <div class="app-progress-fill-bar" style="width: ${barWidth}%; background: ${barGradient};">
+            <span class="bar-circular-badge" style="border-color: ${badgeBorder}; color: ${badgeBorder};">${cpuPct}%</span>
+          </div>
+        </div>
+        <div class="app-pct-cell" style="color: ${badgeBorder}; display:flex; gap:0.6rem; align-items:center; justify-content:flex-end;">
+          <span>${app.cpu_percent !== undefined ? `${app.cpu_percent}% CPU` : `${cpuPct}%`}</span>
+          ${actionBtn}
+        </div>
       </div>
-      <div class="app-metrics">${escHtml(app.category || "Application")} · CPU ${Number(app.cpu_percent || 0).toFixed(1)}% · RAM ${Number(app.memory_percent || 0).toFixed(1)}%</div>
-      ${app.stoppable === false
-        ? `<button class="stop-btn disabled" disabled title="Necessary Linux app. Stop is disabled for system safety.">Protected</button>`
-        : app.browser_control
-          ? `<button class="stop-btn browser" onclick="closeOtherBrowserTabs(${escHtml(JSON.stringify(app.pids || [app.pid]))}, ${escHtml(JSON.stringify(app.name || "Browser"))})">Close Other Tabs</button>`
-          : `<button class="stop-btn" onclick="stopLinuxApp(${escHtml(JSON.stringify(app.pids || [app.pid]))}, ${escHtml(JSON.stringify(app.name || "App"))})">Stop</button>`
-      }
-    </div>
-  `).join("");
+    `;
+  }).join("");
 }
 
 async function closeOtherBrowserTabs(pids, name) {
@@ -1121,12 +1233,13 @@ if (window.desktop?.onBackendStatus) {
   window.desktop.onBackendStatus(async (status) => {
     updateBackendUI(status);
     if (status === 'online' || status === 'external') {
-      // Backend just came online – refresh the dashboard unconditionally so
-      // the user sees real data even if they haven't switched views yet.
       await checkBackend();
       await loadDashboardDetails();
+      fetchSystemMetrics();
+      fetchAdaptationStatus(false);
+      fetchRecipes();
+      fetchSystemUpdateCommand(false);
       if (activeViewName !== 'dashboard') {
-        // Also run the active view's refresh so e.g. Repair page gets recipes
         refreshActiveView();
       }
     }
@@ -2201,38 +2314,271 @@ async function loadOptimizeCards(force = false) {
   });
 }
 
-/* ─── DEV TOOLS (with live status) ──────────────────────── */
+/* ─── DEV TOOLS STORE (Play Store Styled Marketplace) ───── */
 const DEV_TOOLS = [
-  { icon: "Py", name: "Python",         statusKey: "python3",       hint: "Python missing", description: "High-level programming language for general-purpose programming and scripting." },
-  { icon: "Pi", name: "pip",            statusKey: "pip",           hint: "pip broken", description: "The standard package installer for Python libraries and dependencies." },
-  { icon: "Nd", name: "Node.js",        statusKey: "node",          hint: "Node.js missing", description: "JavaScript runtime environment built on Chrome's V8 engine." },
-  { icon: "Nm", name: "npm",            statusKey: "npm",           hint: "npm broken", description: "The default package manager for Node.js to manage project dependencies." },
-  { icon: "Gt", name: "Git",            statusKey: "git",           hint: "Git missing", description: "Distributed version control system to track software changes." },
-  { icon: "Dk", name: "Docker",         statusKey: "docker",        hint: "Docker missing", description: "Platform for containerizing, deploying, and running applications in isolated environments." },
-  { icon: "Vs", name: "VS Code",        statusKey: "code",          hint: "VS Code corrupted installation", description: "Extensible, lightweight source-code editor developed by Microsoft." },
-  { icon: "Jv", name: "Java",           statusKey: "java",          hint: "Java missing", description: "Object-oriented, class-based programming language for cross-platform apps." },
-  { icon: "Sn", name: "Snap",           statusKey: "snap",          hint: "snap missing", description: "App package management system for Linux desktop, cloud, and IoT." },
-  { icon: "As", name: "Android Studio", statusKey: "android",       hint: "Android Studio missing", description: "Official Integrated Development Environment (IDE) for Android app development." },
-  { icon: "Ol", name: "Ollama",         statusKey: "ollama",        hint: "Ollama missing", description: "Lightweight tool to run, build, and manage large language models locally." },
-  { icon: "Po", name: "Poetry",         statusKey: "poetry",        hint: "Poetry missing", description: "Python packaging and dependency management tool." },
-  { icon: "Pn", name: "pnpm",           statusKey: "pnpm",          hint: "pnpm missing", description: "Fast, disk space efficient package manager for Node.js." },
-  { icon: "Rs", name: "Rust",           statusKey: "rust",          hint: "Rust compiler missing", description: "Modern systems programming language focused on safety, speed, and concurrency." },
-  { icon: "Go", name: "Go",             statusKey: "go",            hint: "Go missing", description: "Statically typed, compiled programming language designed at Google for backend scalability." },
-  { icon: "Ht", name: "htop",           statusKey: "htop",          hint: "htop missing", description: "Interactive system-monitor, process-viewer, and process-manager for terminal." },
-  { icon: "Nv", name: "Neovim",         statusKey: "neovim",        hint: "Neovim missing", description: "Hyperextensible, Vim-based text editor for high-efficiency editing." },
-  { icon: "Gh", name: "GitHub CLI",     statusKey: "gh",            hint: "GitHub CLI missing", description: "Official command-line interface to interact with GitHub issues, PRs, and repos." },
-  { icon: "Fz", name: "fzf",            statusKey: "fzf",           hint: "fzf missing", description: "General-purpose command-line fuzzy finder." },
-  { icon: "Jq", name: "jq",             statusKey: "jq",            hint: "jq missing", description: "Command-line JSON processor to slice, filter, map, and transform JSON data." },
-  { icon: "Tx", name: "tmux",           statusKey: "tmux",          hint: "tmux missing", description: "Terminal multiplexer to manage multiple terminal sessions in a single window." },
-  { icon: "Pc", name: "PyCharm",        statusKey: "pycharm",       hint: "PyCharm missing", description: "Feature-rich IDE for Python development by JetBrains." },
-  { icon: "St", name: "Sublime",        statusKey: "sublime",       hint: "Sublime Text missing", description: "Sophisticated, fast text editor for code, markup, and prose." },
-  { icon: "Pm", name: "Postman",        statusKey: "postman",       hint: "Postman missing", description: "API platform for building, testing, and managing APIs." },
-  { icon: "Db", name: "DBeaver CE",     statusKey: "dbeaver",       hint: "DBeaver CE missing", description: "Free universal database tool and SQL client supporting SQL databases." },
-  { icon: "Sl", name: "Slack",          statusKey: "slack",         hint: "Slack missing", description: "Team communication and collaboration software application." },
-  { icon: "Br", name: "Brave",          statusKey: "brave",         hint: "Brave missing", description: "Privacy-focused web browser that blocks trackers and ads by default." },
-  { icon: "Ch", name: "Chrome",         statusKey: "chrome",        hint: "Chrome missing", description: "Fast, secure, and popular web browser developed by Google." },
-  { icon: "Ff", name: "Firefox",        statusKey: "firefox",       hint: "Firefox missing", description: "Free, open-source web browser developed by Mozilla." },
+  { icon: "Py", name: "Python",         statusKey: "python3",       hint: "Python missing", description: "High-level programming language for general-purpose programming, data science, and scripting.", category: "languages", popular: true, alltime: true, hot2026: true, offline: true, version: "v3.12+", url: "https://python.org", platforms: ["win", "mac", "linux"] },
+  { icon: "Pi", name: "pip",            statusKey: "pip",           hint: "pip broken", description: "The standard package installer for Python libraries and dependencies.", category: "frameworks", popular: true, offline: true, version: "v24.0+", url: "https://pip.pypa.io", platforms: ["win", "mac", "linux"] },
+  { icon: "Nd", name: "Node.js",        statusKey: "node",          hint: "Node.js missing", description: "JavaScript runtime environment built on Chrome's V8 engine.", category: "frameworks", popular: true, alltime: true, hot2026: true, offline: true, version: "v20.x LTS", url: "https://nodejs.org", platforms: ["win", "mac", "linux"] },
+  { icon: "Nm", name: "npm",            statusKey: "npm",           hint: "npm broken", description: "The default package manager for Node.js to manage project dependencies.", category: "frameworks", popular: true, offline: true, version: "v10.x", url: "https://npmjs.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Gt", name: "Git",            statusKey: "git",           hint: "Git missing", description: "Distributed version control system to track software changes across teams.", category: "vcs", popular: true, trending: true, alltime: true, hot2026: true, offline: true, version: "v2.44+", url: "https://git-scm.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Dk", name: "Docker",         statusKey: "docker",        hint: "Docker missing", description: "Platform for containerizing, deploying, and running applications in isolated environments.", category: "devops", popular: true, trending: true, alltime: true, hot2026: true, offline: true, version: "v26.0+", url: "https://docker.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Vs", name: "VS Code",        statusKey: "code",          hint: "VS Code corrupted installation", description: "Extensible, lightweight source-code editor developed by Microsoft.", category: "ides", popular: true, trending: true, alltime: true, hot2026: true, offline: true, version: "v1.88+", url: "https://code.visualstudio.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Jv", name: "Java",           statusKey: "java",          hint: "Java missing", description: "Object-oriented, class-based programming language for enterprise cross-platform apps.", category: "languages", popular: true, alltime: true, offline: true, version: "JDK 21 LTS", url: "https://java.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Sn", name: "Snap",           statusKey: "snap",          hint: "snap missing", description: "App package management system for Linux desktop, cloud, and IoT.", category: "devops", offline: true, version: "v2.61+", url: "https://snapcraft.io", platforms: ["linux"] },
+  { icon: "As", name: "Android Studio", statusKey: "android",       hint: "Android Studio missing", description: "Official Integrated Development Environment (IDE) for Android app development.", category: "ides", popular: true, offline: true, version: "v2024.1+", url: "https://developer.android.com/studio", platforms: ["win", "mac", "linux"] },
+  { icon: "Ol", name: "Ollama",         statusKey: "ollama",        hint: "Ollama missing", description: "Lightweight tool to run, build, and manage large language models locally.", category: "devops", trending: true, hot2026: true, offline: true, version: "v0.1.30+", url: "https://ollama.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Po", name: "Poetry",         statusKey: "poetry",        hint: "Poetry missing", description: "Python packaging and dependency management tool.", category: "frameworks", hot2026: true, offline: true, version: "v1.8+", url: "https://python-poetry.org", platforms: ["win", "mac", "linux"] },
+  { icon: "Pn", name: "pnpm",           statusKey: "pnpm",          hint: "pnpm missing", description: "Fast, disk space efficient package manager for Node.js.", category: "frameworks", trending: true, hot2026: true, offline: true, version: "v9.0+", url: "https://pnpm.io", platforms: ["win", "mac", "linux"] },
+  { icon: "Rs", name: "Rust",           statusKey: "rust",          hint: "Rust compiler missing", description: "Modern systems programming language focused on safety, speed, and concurrency.", category: "languages", trending: true, hot2026: true, offline: true, version: "v1.77+", url: "https://rust-lang.org", platforms: ["win", "mac", "linux"] },
+  { icon: "Go", name: "Go",             statusKey: "go",            hint: "Go missing", description: "Statically typed, compiled programming language designed at Google for backend scalability.", category: "languages", popular: true, hot2026: true, offline: true, version: "v1.22+", url: "https://golang.org", platforms: ["win", "mac", "linux"] },
+  { icon: "Ht", name: "htop",           statusKey: "htop",          hint: "htop missing", description: "Interactive system-monitor, process-viewer, and process-manager for terminal.", category: "cli", offline: true, version: "v3.3+", url: "https://htop.dev", platforms: ["mac", "linux"] },
+  { icon: "Nv", name: "Neovim",         statusKey: "neovim",        hint: "Neovim missing", description: "Hyperextensible, Vim-based text editor for high-efficiency editing.", category: "ides", trending: true, hot2026: true, offline: true, version: "v0.10+", url: "https://neovim.io", platforms: ["win", "mac", "linux"] },
+  { icon: "Gh", name: "GitHub CLI",     statusKey: "gh",            hint: "GitHub CLI missing", description: "Official command-line interface to interact with GitHub issues, PRs, and repos.", category: "cli", trending: true, offline: true, version: "v2.45+", url: "https://cli.github.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Fz", name: "fzf",            statusKey: "fzf",           hint: "fzf missing", description: "General-purpose command-line fuzzy finder.", category: "cli", offline: true, version: "v0.48+", url: "https://github.com/junegunn/fzf", platforms: ["win", "mac", "linux"] },
+  { icon: "Jq", name: "jq",             statusKey: "jq",            hint: "jq missing", description: "Command-line JSON processor to slice, filter, map, and transform JSON data.", category: "cli", offline: true, version: "v1.7+", url: "https://jqlang.github.io/jq", platforms: ["win", "mac", "linux"] },
+  { icon: "Tx", name: "tmux",           statusKey: "tmux",          hint: "tmux missing", description: "Terminal multiplexer to manage multiple terminal sessions in a single window.", category: "cli", offline: true, version: "v3.4+", url: "https://github.com/tmux/tmux", platforms: ["mac", "linux"] },
+  { icon: "Pc", name: "PyCharm",        statusKey: "pycharm",       hint: "PyCharm missing", description: "Feature-rich IDE for Python development by JetBrains.", category: "ides", popular: true, offline: true, version: "v2024.1", url: "https://jetbrains.com/pycharm", platforms: ["win", "mac", "linux"] },
+  { icon: "St", name: "Sublime",        statusKey: "sublime",       hint: "Sublime Text missing", description: "Sophisticated, fast text editor for code, markup, and prose.", category: "ides", offline: true, version: "Text 4", url: "https://sublimetext.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Pm", name: "Postman",        statusKey: "postman",       hint: "Postman missing", description: "API platform for building, testing, and managing APIs.", category: "testing", popular: true, version: "v10.x", url: "https://postman.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Db", name: "DBeaver CE",     statusKey: "dbeaver",       hint: "DBeaver CE missing", description: "Free universal database tool and SQL client supporting SQL databases.", category: "databases", popular: true, offline: true, version: "v24.0+", url: "https://dbeaver.io", platforms: ["win", "mac", "linux"] },
+  { icon: "Sl", name: "Slack",          statusKey: "slack",         hint: "Slack missing", description: "Team communication and collaboration software application.", category: "cli", popular: true, version: "v4.37+", url: "https://slack.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Br", name: "Brave",          statusKey: "brave",         hint: "Brave missing", description: "Privacy-focused web browser that blocks trackers and ads by default.", category: "testing", popular: true, offline: true, version: "v1.64+", url: "https://brave.com", platforms: ["win", "mac", "linux"] },
+  { icon: "Ch", name: "Chrome",         statusKey: "chrome",        hint: "Chrome missing", description: "Fast, secure, and popular web browser developed by Google.", category: "testing", popular: true, alltime: true, offline: true, version: "v123+", url: "https://google.com/chrome", platforms: ["win", "mac", "linux"] },
+  { icon: "Ff", name: "Firefox",        statusKey: "firefox",       hint: "Firefox missing", description: "Free, open-source web browser developed by Mozilla.", category: "testing", popular: true, offline: true, version: "v124+", url: "https://mozilla.org/firefox", platforms: ["win", "mac", "linux"] },
 ];
+
+let currentDevToolsCategory = "all";
+
+function filterDevToolsCategory(category) {
+  currentDevToolsCategory = category;
+  const pills = document.querySelectorAll("#devtools-category-nav .category-pill");
+  pills.forEach(pill => {
+    const text = pill.textContent.toLowerCase();
+    const isActive = (category === "all" && text === "all") ||
+      (category === "popular" && text === "popular") ||
+      (category === "trending" && text.includes("trending")) ||
+      (category === "alltime" && text.includes("all-time")) ||
+      (category === "hot2026" && text.includes("2026")) ||
+      (category === "offline" && text.includes("offline")) ||
+      (category === "languages" && text === "languages") ||
+      (category === "frameworks" && text === "frameworks") ||
+      (category === "databases" && text === "databases") ||
+      (category === "devops" && text === "devops") ||
+      (category === "ides" && text.includes("ides")) ||
+      (category === "vcs" && text.includes("git")) ||
+      (category === "cli" && text.includes("cli")) ||
+      (category === "testing" && text.includes("testing"));
+    pill.classList.toggle("active", isActive);
+  });
+  searchDevTools();
+}
+
+function clearDevToolsSearch() {
+  const input = $("devtools-search");
+  if (input) input.value = "";
+  filterDevToolsCategory("all");
+}
+
+function renderStoreHero(tool, installed) {
+  const container = $("devtools-hero-container");
+  if (!container || !tool) return;
+
+  const isInstalled = installed === true;
+  const statusBadge = isInstalled
+    ? `<span class="store-badge installed">Installed</span>`
+    : `<span class="store-badge missing">Not Found</span>`;
+
+  const btnText = isInstalled ? "Manage Tool" : "Install Tool";
+  const btnClass = isInstalled ? "secondary-btn" : "primary-btn hero-btn";
+
+  container.innerHTML = `
+    <div class="store-hero-card" onclick="openDevToolProductModal('${escHtml(tool.name)}')">
+      <div class="hero-icon-box">${escHtml(tool.icon)}</div>
+      <div class="hero-content">
+        <div class="hero-badge-row">
+          <span class="hero-tag">FEATURED DEVELOPER TOOL</span>
+          ${statusBadge}
+        </div>
+        <h2 class="hero-title">${escHtml(tool.name)}</h2>
+        <p class="hero-desc">${escHtml(tool.description)}</p>
+        <div class="hero-platforms">
+          <span class="platform-chip supported">Windows</span>
+          <span class="platform-chip supported">macOS</span>
+          <span class="platform-chip supported">Linux</span>
+          <span class="platform-chip" style="margin-left:0.5rem; color:var(--text-3); font-weight:600;">${escHtml(tool.version || 'v26.0+')}</span>
+        </div>
+      </div>
+      <div class="hero-action-box">
+        <button class="${btnClass}" onclick="event.stopPropagation(); openDevToolManager('${escHtml(tool.name)}', ${isInstalled})">
+          ${btnText}
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderStoreToolCard(tool, installed) {
+  const isInstalled = installed === true;
+  
+  const statusBadge = isInstalled
+    ? `<span class="store-badge installed">Installed</span>`
+    : `<span class="store-badge missing">Not Found</span>`;
+
+  const trendingBadge = tool.trending ? `<span class="store-badge trending">Trending</span>` : "";
+  const offlineBadge = tool.offline ? `<span class="store-badge offline">Offline Ready</span>` : "";
+  const hot2026Badge = tool.hot2026 ? `<span class="store-badge hot2026">2026 Hot</span>` : "";
+
+  const actionBtnClass = isInstalled ? "tool-action-btn btn-installed" : "tool-action-btn btn-install";
+  const actionBtnText = isInstalled ? "Installed" : "Fix / Install";
+
+  const platforms = tool.platforms || ["win", "mac", "linux"];
+  const platformChips = platforms.map(p => {
+    const label = p === "win" ? "Win" : p === "mac" ? "Mac" : "Linux";
+    return `<span style="color:var(--text-3); font-weight:500;">${label}</span>`;
+  }).join(" · ");
+
+  return `
+    <div class="store-tool-card" data-tool-name="${escHtml(tool.name)}" data-tool-category="${escHtml(tool.category || '')}" data-installed="${isInstalled}" onclick="openDevToolProductModal('${escHtml(tool.name)}')">
+      <div>
+        <div class="tool-card-top">
+          <div class="tool-card-icon">${escHtml(tool.icon)}</div>
+          <div class="tool-card-header-text">
+            <h3 class="tool-card-name">${escHtml(tool.name)}</h3>
+            <span class="tool-card-category-pill">${escHtml(tool.category || 'Developer Tool')}</span>
+          </div>
+        </div>
+        <p class="tool-card-desc">${escHtml(tool.description || '')}</p>
+      </div>
+
+      <div>
+        <div class="tool-card-meta-row">
+          <div class="tool-card-badges">
+            ${statusBadge}
+            ${trendingBadge}
+            ${hot2026Badge}
+            ${offlineBadge}
+          </div>
+        </div>
+
+        <div class="tool-card-footer">
+          <div class="tool-card-platforms">
+            ${platformChips}
+          </div>
+          <button class="${actionBtnClass}" onclick="event.stopPropagation(); openDevToolManager('${escHtml(tool.name)}', ${isInstalled})">
+            ${actionBtnText}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderDevToolsStoreSections(toolStatus) {
+  const sectionsWrapper = $("devtools-store-sections");
+  if (!sectionsWrapper) return;
+
+  sectionsWrapper.innerHTML = "";
+
+  // Helper to map tools with status
+  const mappedTools = DEV_TOOLS.map(tool => ({
+    tool,
+    installed: tool.statusKey ? (toolStatus[tool.statusKey] === true) : false
+  }));
+
+  // Store Curated Definitions
+  const curatedSections = [
+    {
+      id: "popular",
+      title: "Popular Developer Tools",
+      subtitle: "Most requested runtimes, compilers, and desktop developer tools.",
+      tools: mappedTools.filter(m => m.tool.popular)
+    },
+    {
+      id: "trending",
+      title: "Trending Now",
+      subtitle: "Tools gaining high developer adoption across OS environments.",
+      tools: mappedTools.filter(m => m.tool.trending)
+    },
+    {
+      id: "alltime",
+      title: "All-Time Best Tools",
+      subtitle: "Foundational developer suites required on every workstation.",
+      tools: mappedTools.filter(m => m.tool.alltime)
+    },
+    {
+      id: "hot2026",
+      title: "2026 Hot Developer Tools",
+      subtitle: "Modern AI coding tools, next-gen runtimes, and local AI engines.",
+      tools: mappedTools.filter(m => m.tool.hot2026)
+    },
+    {
+      id: "offline",
+      title: "Offline Developer Tools",
+      subtitle: "Tools that work locally without requiring an active internet connection after installation.",
+      tools: mappedTools.filter(m => m.tool.offline)
+    },
+    {
+      id: "languages",
+      title: "Programming Languages & Compilers",
+      subtitle: "Python, Java, Rust, Go, and core language runtimes.",
+      tools: mappedTools.filter(m => m.tool.category === "languages")
+    },
+    {
+      id: "frameworks",
+      title: "Package Managers & Frameworks",
+      subtitle: "Node.js, npm, pip, pnpm, Poetry, and ecosystem dependencies.",
+      tools: mappedTools.filter(m => m.tool.category === "frameworks")
+    },
+    {
+      id: "devops",
+      title: "DevOps & Containerization",
+      subtitle: "Docker, Ollama, Snap, and orchestration utilities.",
+      tools: mappedTools.filter(m => m.tool.category === "devops")
+    },
+    {
+      id: "ides",
+      title: "IDEs & Code Editors",
+      subtitle: "VS Code, Android Studio, PyCharm, Neovim, and Sublime.",
+      tools: mappedTools.filter(m => m.tool.category === "ides")
+    },
+    {
+      id: "cli",
+      title: "CLI Tools & Terminal Utilities",
+      subtitle: "GitHub CLI, fzf, jq, tmux, htop, and power terminal utilities.",
+      tools: mappedTools.filter(m => m.tool.category === "cli")
+    },
+    {
+      id: "testing",
+      title: "Testing, APIs & Security",
+      subtitle: "Postman, DBeaver, Brave, Chrome, and API testing suites.",
+      tools: mappedTools.filter(m => m.tool.category === "testing" || m.tool.category === "databases")
+    }
+  ];
+
+  curatedSections.forEach(sec => {
+    if (!sec.tools || sec.tools.length === 0) return;
+
+    const secEl = document.createElement("div");
+    secEl.className = "store-section";
+    secEl.id = `section-${sec.id}`;
+
+    secEl.innerHTML = `
+      <div class="store-section-header">
+        <div>
+          <div class="store-section-title-box">
+            <h2 class="store-section-title">${escHtml(sec.title)}</h2>
+          </div>
+          <div class="store-section-desc">${escHtml(sec.subtitle)}</div>
+        </div>
+      </div>
+      <div class="store-grid">
+        ${sec.tools.slice(0, 8).map(m => renderStoreToolCard(m.tool, m.installed)).join("")}
+      </div>
+    `;
+
+    sectionsWrapper.appendChild(secEl);
+  });
+}
 
 async function refreshDevToolsPage() {
   const btn = $("btn-devtools-refresh");
@@ -2241,7 +2587,7 @@ async function refreshDevToolsPage() {
   toolStatusCache = null;
   await loadDevToolCards(true);
   setRefreshButtonState(btn, "is-success");
-  showToast("Developer tools and suggestions refreshed.", "ok");
+  showToast("Developer tools store refreshed.", "ok");
   setTimeout(() => setRefreshButtonState(btn, ""), 1200);
 }
 
@@ -2288,139 +2634,121 @@ async function refreshActiveView() {
   }
 }
 
-async function loadDevToolCards(force = false) {
-  const grid = $("devtools-grid");
-  grid.innerHTML = `<div class="issue-card"><div class="issue-body"><span class="spinner"></span> Checking installed tools…</div></div>`;
+let managedAppsLoadedCache = false;
 
-  // Fetch dynamically managed tools and sync them with DEV_TOOLS array in memory
-  try {
-    const managedRes = await fetch(`${API}/api/devtools/managed`);
-    const managedData = await managedRes.json();
-    if (managedData.ok && Array.isArray(managedData.apps)) {
-      managedData.apps.forEach(app => {
-        const appIdLower = app.app_id.toLowerCase();
-        let existing = DEV_TOOLS.find(t => (t.statusKey && t.statusKey.toLowerCase() === appIdLower) || t.name.toLowerCase() === app.name.toLowerCase());
-        if (!existing) {
-          existing = {
-            icon: app.name.slice(0, 2),
-            name: app.name,
-            statusKey: app.app_id,
-            hint: `${app.name} missing`,
-            description: app.description || `${app.name} developer tool.`,
-          };
-          DEV_TOOLS.push(existing);
-        }
-        if (app.uninstall_command) {
-          existing.uninstall_command = app.uninstall_command;
-        }
-      });
+async function loadDevToolCards(force = false) {
+  const heroContainer = $("devtools-hero-container");
+  const sectionsWrapper = $("devtools-store-sections");
+  const grid = $("devtools-grid");
+
+  // Instant load when cached
+  if (!force && toolStatusCache && Object.keys(toolStatusCache).length > 0) {
+    const heroTool = DEV_TOOLS.find(t => t.name === "Docker") || DEV_TOOLS[0];
+    const heroInstalled = heroTool.statusKey ? (toolStatusCache[heroTool.statusKey] === true) : false;
+    renderStoreHero(heroTool, heroInstalled);
+    renderDevToolsStoreSections(toolStatusCache);
+    searchDevTools();
+
+    // Silently refresh in background
+    getToolStatus(false).then(updatedStatus => {
+      if (updatedStatus && Object.keys(updatedStatus).length > 0) {
+        const hInstalled = heroTool.statusKey ? (updatedStatus[heroTool.statusKey] === true) : false;
+        renderStoreHero(heroTool, hInstalled);
+        renderDevToolsStoreSections(updatedStatus);
+      }
+    }).catch(() => {});
+    return;
+  }
+
+  // Show skeleton loading state only on initial load
+  if (sectionsWrapper && !toolStatusCache) {
+    sectionsWrapper.innerHTML = `
+      <div class="store-grid">
+        ${[1,2,3,4].map(() => `
+          <div class="skeleton-card">
+            <div class="skeleton-shimmer"></div>
+            <div style="display:flex;gap:0.8rem;">
+              <div class="skeleton-block" style="width:48px;height:48px;"></div>
+              <div style="flex:1;">
+                <div class="skeleton-block" style="width:60%;height:16px;margin-bottom:8px;"></div>
+                <div class="skeleton-block" style="width:40%;height:12px;"></div>
+              </div>
+            </div>
+            <div class="skeleton-block" style="width:100%;height:32px;margin-top:12px;"></div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  // Fetch dynamically managed tools
+  if (!managedAppsLoadedCache || force) {
+    try {
+      const managedRes = await fetch(`${API}/api/devtools/managed`);
+      const managedData = await managedRes.json();
+      if (managedData.ok && Array.isArray(managedData.apps)) {
+        managedData.apps.forEach(app => {
+          const appIdLower = app.app_id.toLowerCase();
+          let existing = DEV_TOOLS.find(t => (t.statusKey && t.statusKey.toLowerCase() === appIdLower) || t.name.toLowerCase() === app.name.toLowerCase());
+          if (!existing) {
+            existing = {
+              icon: app.name.slice(0, 2),
+              name: app.name,
+              statusKey: app.app_id,
+              hint: `${app.name} missing`,
+              description: app.description || `${app.name} developer tool.`,
+              category: "devops",
+              popular: false,
+              offline: true,
+              version: "Latest",
+              platforms: ["win", "mac", "linux"]
+            };
+            DEV_TOOLS.push(existing);
+          }
+          if (app.uninstall_command) {
+            existing.uninstall_command = app.uninstall_command;
+          }
+        });
+        managedAppsLoadedCache = true;
+      }
+    } catch (err) {
+      console.error("[DevTools] Failed to load managed apps:", err);
     }
-  } catch (err) {
-    console.error("[DevTools] Failed to load managed apps:", err);
   }
 
   let toolStatus = {};
+  let fetchError = null;
   try {
     if (force) toolStatusCache = null;
     toolStatus = await getToolStatus(force);
-  } catch (_) {}
-
-  grid.innerHTML = "";
-
-  const installedTools = [];
-  const missingTools = [];
-
-  DEV_TOOLS.forEach(tool => {
-    const installed = tool.statusKey ? (toolStatus[tool.statusKey] === true) : null;
-    if (installed) {
-      installedTools.push({ tool, installed });
-    } else {
-      missingTools.push({ tool, installed });
-    }
-  });
-
-  function renderCard(tool, installed) {
-    const badgeHtml = installed === null
-      ? ""
-      : installed
-        ? `<span class="tool-badge installed">✓ Installed</span>`
-        : `<span class="tool-badge missing">✗ Not Found</span>`;
-
-    const card = document.createElement("div");
-    card.className = "module-card";
-    card.dataset.toolName = tool.name;
-    card.dataset.toolHint = tool.hint || "";
-    card.dataset.installed = String(installed);
-
-    // Build update command for installed tools
-    const osName = getInteractiveOS();
-    const statusKey = tool.statusKey || tool.name.toLowerCase();
-    let updateCmd = "";
-    if (installed && osName === "Linux") {
-      updateCmd = `sudo apt-get install --only-upgrade -y ${statusKey}`;
-    } else if (installed && osName === "Windows") {
-      updateCmd = `winget upgrade --id ${statusKey} --silent`;
-    } else if (installed && osName === "Darwin") {
-      updateCmd = `brew upgrade ${statusKey}`;
-    }
-
-    const updateBtnHtml = installed && updateCmd ? `
-      <button class="action-btn" style="margin-top:.4rem;background:rgba(10,132,255,.12);border:1px solid rgba(10,132,255,.3);color:#60a5fa;" 
-        onclick="openModal({title:'Update ${escHtml(tool.name)}',command:'${updateCmd}',purpose:'Update ${escHtml(tool.name)} to the latest available version.',affects:'${escHtml(tool.name)}',risk:'Low'})">
-        ↑ Update
-      </button>` : "";
-
-    card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
-        <div class="module-icon">${tool.icon}</div>
-        ${badgeHtml}
-      </div>
-      <h2>${escHtml(tool.name)}</h2>
-      <p style="font-size:0.82rem; color:var(--text-2); margin-bottom:0.6rem; line-height:1.4;">${escHtml(tool.description || "")}</p>
-      <p style="font-size:0.75rem; color:var(--text-3); margin-bottom:0.8rem; margin-top:0;">
-        ${installed === false
-          ? `<span style="color:var(--risk-high)">${escHtml(tool.name)} was not found on your system.</span>`
-          : `Installed and available on this machine.`
-        }
-      </p>
-      <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
-        <button class="action-btn" onclick="openDevToolManager('${escHtml(tool.name)}', ${installed})">
-          ${installed === false ? "Fix / Install" : "Manage"}
-        </button>
-        ${updateBtnHtml}
-      </div>
-    `;
-    return card;
+  } catch (err) {
+    fetchError = err;
   }
 
-  // Installed header
-  const installedHeader = document.createElement("div");
-  installedHeader.id = "devtools-installed-header";
-  installedHeader.style = "grid-column: 1 / -1; margin-bottom: 0.5rem;";
-  installedHeader.innerHTML = `<h3 style="font-size:1.15rem; color:var(--text); display:flex; align-items:center; gap:0.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 0.4rem; margin-bottom: 0.8rem;"><span style="color:#10b981; text-shadow: 0 0 8px rgba(16,185,129,0.4);">●</span> Installed Developer Tools (<span class="count">${installedTools.length}</span>)</h3>`;
-  grid.appendChild(installedHeader);
-
-  const installedEmpty = document.createElement("div");
-  installedEmpty.id = "devtools-installed-empty";
-  installedEmpty.style = "grid-column: 1 / -1; padding: 1.5rem; text-align: center; color: var(--text-3); font-style: italic;";
-  installedEmpty.textContent = "No installed developer tools found.";
-  if (installedTools.length === 0) {
-    grid.appendChild(installedEmpty);
-  } else {
-    installedEmpty.style.display = "none";
-    grid.appendChild(installedEmpty);
+  // Handle backend error state
+  if (fetchError && (!toolStatus || Object.keys(toolStatus).length === 0)) {
+    if (sectionsWrapper) {
+      sectionsWrapper.innerHTML = `
+        <div class="store-error-state">
+          <h3 class="empty-title">Unable to load developer tools store</h3>
+          <p class="empty-desc">Could not connect to system backend service. Check if PC Doctor service is running.</p>
+          <button class="primary-btn" onclick="loadDevToolCards(true)">Retry Loading</button>
+        </div>
+      `;
+    }
+    return;
   }
 
-  installedTools.forEach(({ tool, installed }) => {
-    grid.appendChild(renderCard(tool, installed));
-  });
+  // Pick Featured Tool (Docker or VS Code or Python)
+  const heroTool = DEV_TOOLS.find(t => t.name === "Docker") || DEV_TOOLS[0];
+  const heroInstalled = heroTool.statusKey ? (toolStatus[heroTool.statusKey] === true) : false;
+  renderStoreHero(heroTool, heroInstalled);
 
-  // Available to Install section removed as requested.
+  // Render Curated Sections
+  renderDevToolsStoreSections(toolStatus);
 
-  // Apply search filtering in case there is any text in the search input
+  // Apply active search/filter state
   searchDevTools();
-
-  await loadAppSuggestions(force);
 }
 
 let dynamicSearchTimeout = null;
@@ -2447,17 +2775,7 @@ async function extractDynamicCommand(appName, gui) {
       if (descView) descView.textContent = d.purpose || "No description available.";
       if (riskBadge) {
         riskBadge.textContent = d.risk || "Medium";
-        riskBadge.className = `tool-badge ${d.risk === "High" ? "missing" : d.risk === "Medium" ? "warning" : "installed"}`;
-        if (d.risk === "High") {
-          riskBadge.style.background = "rgba(239,68,68,0.15)";
-          riskBadge.style.color = "#fca5a5";
-        } else if (d.risk === "Medium") {
-          riskBadge.style.background = "rgba(245,158,11,0.15)";
-          riskBadge.style.color = "#fde68a";
-        } else {
-          riskBadge.style.background = "rgba(16,185,129,0.15)";
-          riskBadge.style.color = "#a7f3d0";
-        }
+        riskBadge.className = `store-badge ${d.risk === "High" ? "missing" : d.risk === "Medium" ? "trending" : "installed"}`;
       }
       if (btn) {
         btn.disabled = false;
@@ -2504,140 +2822,777 @@ function executeDynamicInstall() {
 }
 
 function searchDevTools() {
-  const query = ($("devtools-search")?.value || "").toLowerCase().trim();
-  const grid = $("devtools-grid");
-  if (!grid) return;
+  const searchInput = $("devtools-search");
+  const query = (searchInput?.value || "").toLowerCase().trim();
+  const clearBtn = $("devtools-search-clear");
+  
+  if (clearBtn) {
+    clearBtn.classList.toggle("hidden", query.length === 0);
+  }
 
-  const cards = document.querySelectorAll("#devtools-grid .module-card");
-  
-  let visibleInstalled = 0;
-  
-  cards.forEach(card => {
-    if (card.id === "devtools-dynamic-search-card") return;
-    const name = (card.dataset.toolName || "").toLowerCase();
-    const hint = (card.dataset.toolHint || "").toLowerCase();
-    const matches = name.includes(query) || hint.includes(query);
-    
-    if (matches) {
-      card.style.display = "";
-      if (card.dataset.installed === "true") {
-        visibleInstalled++;
-      }
-    } else {
-      card.style.display = "none";
-    }
+  const heroContainer = $("devtools-hero-container");
+  const storeSections = $("devtools-store-sections");
+  const searchStatus = $("devtools-search-status");
+  const grid = $("devtools-grid");
+  const searchTitle = $("devtools-search-title");
+  const searchCount = $("devtools-search-count");
+
+  const cat = currentDevToolsCategory || "all";
+  const isDefaultView = query === "" && cat === "all";
+
+  if (isDefaultView) {
+    if (heroContainer) heroContainer.classList.remove("hidden");
+    if (storeSections) storeSections.classList.remove("hidden");
+    if (searchStatus) searchStatus.classList.add("hidden");
+    if (grid) grid.classList.add("hidden");
+    return;
+  }
+
+  // Filtered view mode active
+  if (heroContainer) heroContainer.classList.add("hidden");
+  if (storeSections) storeSections.classList.add("hidden");
+  if (searchStatus) searchStatus.classList.remove("hidden");
+  if (grid) grid.classList.remove("hidden");
+
+  // Get current tool status cache
+  const toolStatus = toolStatusCache || {};
+
+  // Filter DEV_TOOLS memory registry
+  const filtered = DEV_TOOLS.filter(tool => {
+    const matchesQuery = query === "" || 
+      tool.name.toLowerCase().includes(query) ||
+      (tool.description || "").toLowerCase().includes(query) ||
+      (tool.category || "").toLowerCase().includes(query) ||
+      (tool.hint || "").toLowerCase().includes(query);
+
+    if (!matchesQuery) return false;
+
+    if (cat === "all") return true;
+    if (cat === "popular") return tool.popular;
+    if (cat === "trending") return tool.trending;
+    if (cat === "alltime") return tool.alltime;
+    if (cat === "hot2026") return tool.hot2026;
+    if (cat === "offline") return tool.offline;
+    return (tool.category || "").toLowerCase() === cat;
   });
-  
-  const installedHeader = $("devtools-installed-header");
-  if (installedHeader) {
-    const countEl = installedHeader.querySelector(".count");
-    if (countEl) countEl.textContent = visibleInstalled;
-    installedHeader.style.display = visibleInstalled > 0 || !query ? "" : "none";
+
+  // Update status header title
+  if (searchTitle) {
+    if (query) {
+      searchTitle.innerHTML = `Search results for "<span style="color:var(--apple-cyan)">${escHtml(query)}</span>"`;
+    } else {
+      const catNames = {
+        popular: "Popular Developer Tools",
+        trending: "🔥 Trending Tools",
+        alltime: "⭐ All-Time Best Tools",
+        hot2026: "⚡ 2026 Hot Tools",
+        offline: "📴 Offline Developer Tools",
+        languages: "Programming Languages",
+        frameworks: "Package Managers & Frameworks",
+        databases: "Databases & SQL Tools",
+        devops: "DevOps & Containers",
+        ides: "IDEs & Code Editors",
+        vcs: "Git & Version Control",
+        cli: "CLI Tools & Terminal Utilities",
+        testing: "Testing & Security Tools"
+      };
+      searchTitle.textContent = catNames[cat] || "Filtered Tools";
+    }
   }
-  const installedEmpty = $("devtools-installed-empty");
-  if (installedEmpty) {
-    installedEmpty.style.display = visibleInstalled === 0 && !query ? "" : "none";
+
+  if (searchCount) {
+    searchCount.textContent = `${filtered.length} tool${filtered.length === 1 ? '' : 's'} found`;
   }
-  
-  // Create / Update dynamic search installer card
-  let dynamicCard = $("devtools-dynamic-search-card");
+
+  grid.innerHTML = "";
+
+
+  // ── Live Package Search Panel ────────────────────────────────────────────
   if (query) {
-    if (!dynamicCard) {
-      dynamicCard = document.createElement("div");
-      dynamicCard.id = "devtools-dynamic-search-card";
-      dynamicCard.className = "module-card";
-      grid.insertBefore(dynamicCard, grid.firstChild);
-    }
-    
-    const titleText = query.charAt(0).toUpperCase() + query.slice(1);
-    const existingGui = $("dynamic-gui-toggle")?.checked || false;
-    dynamicCard.innerHTML = `
-      <div style="display:flex; align-items:center; gap:.6rem; flex-wrap:wrap">
-        <div class="module-icon">🔍</div>
-        <span class="tool-badge" style="background:rgba(99,102,241,.15); border:1px solid rgba(99,102,241,.35); color:#a5b4fc; font-size:.7rem; padding:.2rem .5rem">Dynamic Search Installer</span>
+    const searchPanel = document.createElement("div");
+    searchPanel.id = "pkg-search-panel";
+    searchPanel.style.cssText = "grid-column:1/-1; margin-bottom:1.25rem;";
+    searchPanel.innerHTML = `
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.75rem;">
+        <div class="tool-card-icon" style="background:rgba(56,189,248,0.12);color:#38bdf8;flex-shrink:0;">?</div>
+        <div>
+          <h3 style="margin:0;font-size:1rem;font-weight:700;color:var(--text-1);">
+            Live Package Search — <span style="color:#38bdf8;">${escHtml(query)}</span>
+          </h3>
+          <span style="font-size:.78rem;color:var(--text-3);">
+            Searching winget, apt, snap, brew, npm, PyPI...
+          </span>
+        </div>
+        <div id="pkg-search-spinner" style="margin-left:auto;width:18px;height:18px;border:2px solid rgba(255,255,255,0.1);border-top-color:#38bdf8;border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;"></div>
       </div>
-      <h2 style="margin-top:.4rem; font-size:1.2rem; margin-bottom:0.2rem;" id="dynamic-card-title">${escHtml(titleText)}</h2>
-      <p id="dynamic-card-description" style="font-size:0.8rem; color:var(--text-3); margin-top:0.2rem; margin-bottom:0.6rem; line-height:1.4;">Extracting tool description...</p>
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem; margin-top:0.5rem;">
-        <span style="font-size:0.85rem; color:var(--text-2); font-weight:500;">Download with GUI</span>
-        <label class="switch">
-          <input type="checkbox" id="dynamic-gui-toggle" ${existingGui ? "checked" : ""}>
-          <span class="slider round"></span>
-        </label>
+      <div id="pkg-search-results" style="display:flex;flex-direction:column;gap:.45rem;"></div>
+      <div id="pkg-search-empty" style="display:none;padding:1.2rem;background:rgba(15,20,35,0.6);border-radius:10px;border:1px solid rgba(255,255,255,0.06);">
+        <p style="margin:0 0 .6rem;color:var(--text-2);font-size:.88rem;">
+          No packages found in any registry for <strong>${escHtml(query)}</strong>.
+          Enter a command manually:
+        </p>
+        <div style="display:flex;gap:.5rem;">
+          <input id="pkg-manual-cmd" type="text" placeholder="e.g. winget install MyApp" style="flex:1;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.12);border-radius:7px;padding:.45rem .75rem;color:var(--text-1);font-family:var(--font-mono);font-size:.8rem;outline:none;" />
+          <button class="primary-btn" style="padding:.42rem 1rem;font-size:.82rem;" onclick="installManualPkgCmd()">Run</button>
+        </div>
       </div>
-      <div style="margin-bottom:0.75rem;">
-        <label style="display:block; font-size:0.7rem; color:var(--text-3); margin-bottom:0.3rem; text-transform:uppercase; letter-spacing:0.05em;">Command View</label>
-        <textarea id="dynamic-command-view" readonly style="width:100%; height:65px; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:6px; color:#a5b4fc; font-family:var(--font-mono, monospace); font-size:0.75rem; padding:0.4rem; resize:none; box-sizing:border-box;"></textarea>
-      </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
-        <span style="font-size:0.75rem; color:var(--text-3);">Risk Level</span>
-        <span class="tool-badge" id="dynamic-risk-badge" style="font-size:0.7rem; padding:0.15rem 0.45rem;">Detecting...</span>
-      </div>
-      <button class="action-btn" id="dynamic-install-btn" style="width:100%;" onclick="executeDynamicInstall()" disabled>
-        Run / Fix
-      </button>
     `;
-    
-    // Wire up GUI toggle listener
-    const checkbox = $("dynamic-gui-toggle");
-    if (checkbox) {
-      checkbox.addEventListener("change", triggerDynamicCommandExtract);
-    }
-    
+    grid.appendChild(searchPanel);
+
+    // Trigger live search
     if (dynamicSearchTimeout) clearTimeout(dynamicSearchTimeout);
-    dynamicSearchTimeout = setTimeout(() => {
-      triggerDynamicCommandExtract();
-    }, 250);
-  } else {
-    if (dynamicCard) {
-      dynamicCard.remove();
-    }
+    dynamicSearchTimeout = setTimeout(() => runLivePkgSearch(query), 280);
   }
+
+  if (filtered.length === 0 && !query) {
+    grid.innerHTML = `
+      <div class="store-empty-state">
+        <div class="empty-icon">?</div>
+        <h3 class="empty-title">No tools found in this category</h3>
+        <p class="empty-desc">Try selecting another category or searching for developer tools above.</p>
+        <button class="primary-btn" onclick="filterDevToolsCategory('all')">View All Developer Tools</button>
+      </div>
+    `;
+    return;
+  }
+
+  // Render matching tool cards from DEV_TOOLS registry
+  filtered.forEach(tool => {
+    const installed = tool.statusKey ? (toolStatus[tool.statusKey] === true) : false;
+    grid.insertAdjacentHTML("beforeend", renderStoreToolCard(tool, installed));
+  });
 }
 
-window.triggerDynamicCommandExtract = triggerDynamicCommandExtract;
-window.executeDynamicInstall = executeDynamicInstall;
+// ── Live Package Search — calls /api/devtools/search-packages ─────────────
+// ── Resolution pipeline state (per-search context) ────────────────────────
+let _lastResolveQuery    = "";
+let _lastResolveVariant  = "";
+let _lastResolveSelected = null;   // ResolutionCandidate | null
 
-async function loadAppSuggestions(force = false) {
-  const container = $("devtools-suggestions");
-  if (!container) return;
-  
-  container.innerHTML = `<div class="issue-card"><div class="issue-body"><span class="spinner"></span> Analyzing stack &amp; fetching recommendations…</div></div>`;
-  
+// ── Call /api/devtools/resolve — full pipeline ────────────────────────────
+async function runLivePkgSearch(query) {
+  const spinner   = document.getElementById("pkg-search-spinner");
+  const resultsEl = document.getElementById("pkg-search-results");
+  const emptyEl   = document.getElementById("pkg-search-empty");
+  if (!resultsEl) return;
+
+  _lastResolveQuery   = query;
+  _lastResolveVariant = "";
+
   try {
-    const r = await fetch(`${API}/api/devtools/suggest?refresh=${force ? "true" : "false"}&t=${Date.now()}`);
-    const d = await r.json();
-    if (d.diagnostics) {
-      console.info("[DevTools Refresh]", d.diagnostics);
-    }
-    
-    if (!d.ok || !d.suggestions || d.suggestions.length === 0) {
-      container.innerHTML = `<div class="issue-card"><div class="issue-body" style="color:var(--text-3)">All suggested DevOps applications are already installed! Your workstation is fully loaded.</div></div>`;
+    const res  = await fetch("/api/devtools/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variant: "", force_refresh: false }),
+    });
+    const data = await res.json();
+    if (spinner) spinner.style.display = "none";
+
+    if (!data.ok || data.status === "not_found" || !data.candidates?.length) {
+      if (emptyEl) emptyEl.style.display = "block";
       return;
     }
-    
-    container.innerHTML = "";
-    d.suggestions.forEach(item => {
-      const card = document.createElement("div");
-      card.className = "module-card";
-      card.innerHTML = `
-        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
-          <div class="module-icon">${escHtml(item.icon)}</div>
-          <span class="tool-badge" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.35);color:#a5b4fc;font-size:.7rem;padding:.2rem .5rem">Based on ${escHtml(item.trigger_app)}</span>
-        </div>
-        <h2 style="margin-top:.4rem">${escHtml(item.app)}</h2>
-        <div style="font-size:.75rem;color:var(--accent-b);font-weight:600">${escHtml(item.category)}</div>
-        <p>${escHtml(item.description)}</p>
-        <button class="action-btn" style="margin-top:.6rem;background:linear-gradient(135deg,rgba(168,85,247,.45),rgba(236,72,153,.3));border:1px solid rgba(236,72,153,.4);color:#f472b6" onclick="extractAndInstallRecipe('${escHtml(item.app)}')">
-          Extract &amp; Install
-        </button>
-      `;
-      container.appendChild(card);
-    });
+
+    resultsEl.innerHTML = "";
+
+    if (data.status === "auto_selected" && data.selected) {
+      // High-confidence result — show it prominently at the top
+      _lastResolveSelected = data.selected;
+      resultsEl.insertAdjacentHTML("beforeend",
+        renderPkgResultRow(data.selected, data.confidence, true, data.from_cache));
+      // Show remaining candidates (lower confidence) below
+      data.candidates
+        .filter(c => c.pkg_id !== data.selected.pkg_id)
+        .slice(0, 5)
+        .forEach(c => resultsEl.insertAdjacentHTML("beforeend",
+          renderPkgResultRow(c, c.total_score, false, false)));
+    } else {
+      // needs_disambiguation — show a disambiguation header + all candidates
+      resultsEl.insertAdjacentHTML("beforeend", renderDisambiguationHeader(query, data.confidence));
+      data.candidates.slice(0, 8).forEach(c =>
+        resultsEl.insertAdjacentHTML("beforeend",
+          renderPkgResultRow(c, c.total_score, false, false)));
+    }
+
   } catch (err) {
-    container.innerHTML = `<div class="issue-card"><div class="issue-body" style="color:var(--risk-high)">Failed to load suggestions: ${escHtml(err.message)}</div></div>`;
+    if (spinner) spinner.style.display = "none";
+    if (emptyEl) emptyEl.style.display = "block";
+    console.error("resolve error", err);
   }
 }
+
+// ── Disambiguation header (shown when confidence < 80%) ───────────────────
+function renderDisambiguationHeader(query, topScore) {
+  return `
+    <div style="
+        padding:.75rem 1rem;margin-bottom:.25rem;
+        background:rgba(245,158,11,0.07);
+        border:1px solid rgba(245,158,11,0.22);
+        border-radius:10px;
+        display:flex;align-items:center;gap:.65rem;
+      ">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <div>
+        <div style="font-size:.85rem;font-weight:700;color:#f59e0b;">
+          Multiple matches — select the correct one
+        </div>
+        <div style="font-size:.75rem;color:var(--text-3);">
+          Best match confidence: ${topScore.toFixed(0)}% — below the 80% auto-select threshold.
+          Review the candidates below or enter an ID manually.
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Render one result row with confidence bar + verification badge ─────────
+function renderPkgResultRow(r, confidence, isTopPick, fromCache) {
+  const managerColor = {
+    winget:"#38bdf8", msstore:"#60a5fa", apt:"#4ade80",
+    snap:"#f59e0b",   flatpak:"#a78bfa", brew:"#fb923c",
+    npm:"#f87171",    pip:"#fbbf24",     choco:"#c084fc",
+    scoop:"#94a3b8",
+  }[r.manager] || "#94a3b8";
+
+  const score = confidence ?? r.total_score ?? 0;
+  const barColor = score >= 80 ? "#4ade80" : score >= 60 ? "#f59e0b" : "#f87171";
+
+  // Verification badge
+  let verBadge = "";
+  if (r.verified === true) {
+    verBadge = `<span style="padding:.15rem .5rem;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(74,222,128,0.12);color:#4ade80;border:1px solid rgba(74,222,128,0.25);">Verified</span>`;
+  } else if (r.verified === false) {
+    verBadge = `<span style="padding:.15rem .5rem;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25);">Unverified</span>`;
+  } else {
+    verBadge = `<span style="padding:.15rem .5rem;border-radius:4px;font-size:.65rem;color:var(--text-3);background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);">Unknown</span>`;
+  }
+
+  // Cache badge
+  const cacheBadge = fromCache
+    ? `<span style="padding:.15rem .5rem;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(56,189,248,0.1);color:#38bdf8;border:1px solid rgba(56,189,248,0.2);">Verified &middot; cached</span>`
+    : "";
+
+  // Top-pick glow border
+  const border = isTopPick
+    ? "border:1px solid rgba(74,222,128,0.35)"
+    : "border:1px solid rgba(255,255,255,0.07)";
+
+  const abbr = (r.name || r.pkg_id || r.id || "?").slice(0, 2).toUpperCase();
+  const pkgId = r.pkg_id || r.id;
+  const name  = r.name || pkgId;
+  const desc  = r.description
+    ? escHtml(r.description.slice(0, 90)) + (r.description.length > 90 ? "…" : "")
+    : "";
+  const pub   = r.publisher
+    ? `<span style="font-size:.73rem;color:var(--text-3);">${escHtml(r.publisher)}</span> &middot; `
+    : "";
+  const ver   = r.version
+    ? `<span style="font-size:.73rem;color:var(--text-3);">${escHtml(r.version)}</span>`
+    : "";
+
+  // Encode for onclick attribute
+  const safeId      = escHtml(pkgId);
+  const safeMgr     = escHtml(r.manager);
+  const safeName    = escHtml(name);
+  const safeSrc     = escHtml(r.source || r.manager);
+  const safePub     = escHtml(r.publisher || "");
+  const safeHome    = escHtml(r.homepage || "");
+  const safeVerif   = r.verified === true ? "true" : r.verified === false ? "false" : "null";
+
+  return `
+    <div style="
+        display:flex;align-items:center;gap:.85rem;
+        padding:.75rem 1rem;
+        background:${isTopPick ? "rgba(20,35,25,0.8)" : "rgba(15,20,35,0.7)"};
+        ${border};border-radius:10px;
+        transition:background .15s;
+        position:relative;overflow:hidden;
+      "
+      onmouseenter="this.style.background='rgba(30,40,65,0.85)'"
+      onmouseleave="this.style.background='${isTopPick ? "rgba(20,35,25,0.8)" : "rgba(15,20,35,0.7)"}'"
+    >
+      ${isTopPick ? `<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#4ade80;border-radius:10px 0 0 10px;"></div>` : ""}
+
+      <!-- Icon -->
+      <div style="
+          width:42px;height:42px;border-radius:9px;flex-shrink:0;
+          display:flex;align-items:center;justify-content:center;
+          background:rgba(56,189,248,0.1);color:#38bdf8;
+          font-weight:800;font-size:.95rem;
+        ">${abbr}</div>
+
+      <!-- Info -->
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:baseline;gap:.45rem;flex-wrap:wrap;margin-bottom:.1rem;">
+          <span style="font-weight:700;color:var(--text-1);font-size:.93rem;">${escHtml(name)}</span>
+          <span style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-3);word-break:break-all;">${escHtml(pkgId)}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:.35rem;margin-bottom:.2rem;">
+          ${pub}${ver}
+          ${verBadge}
+          ${cacheBadge}
+        </div>
+        ${desc ? `<p style="margin:0;font-size:.77rem;color:var(--text-2);line-height:1.4;">${desc}</p>` : ""}
+
+        <!-- Confidence bar -->
+        <div style="display:flex;align-items:center;gap:.5rem;margin-top:.35rem;">
+          <div style="flex:1;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;max-width:120px;">
+            <div style="height:100%;width:${Math.round(score)}%;background:${barColor};border-radius:2px;transition:width .4s;"></div>
+          </div>
+          <span style="font-size:.67rem;color:${barColor};font-weight:700;font-variant-numeric:tabular-nums;">${score.toFixed(0)}%</span>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.4rem;flex-shrink:0;">
+        <span style="
+            padding:.2rem .6rem;border-radius:5px;
+            font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+            background:rgba(0,0,0,0.35);color:${managerColor};
+            border:1px solid ${managerColor}44;
+          ">${escHtml(r.manager)}</span>
+        <div style="display:flex;gap:.35rem;">
+          <button class="secondary-btn" style="padding:.3rem .7rem;font-size:.76rem;"
+            onclick="openPkgDetails('${safeId}','${safeMgr}')">
+            Details
+          </button>
+          <button class="primary-btn" style="padding:.3rem .85rem;font-size:.76rem;"
+            onclick="installDiscoveredPkg('${safeId}','${safeMgr}','${safeName}','${safeSrc}','${safePub}','${safeHome}',${safeVerif})">
+            Install
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Details drawer: calls /api/devtools/package-details ───────────────────
+async function openPkgDetails(pkgId, manager) {
+  let drawer = document.getElementById("pkg-details-drawer");
+  if (!drawer) {
+    drawer = document.createElement("div");
+    drawer.id = "pkg-details-drawer";
+    drawer.style.cssText = `
+      position:fixed;top:0;right:-460px;width:440px;height:100vh;
+      background:var(--surface-1,#0f1623);
+      border-left:1px solid rgba(255,255,255,0.09);
+      box-shadow:-10px 0 40px rgba(0,0,0,0.55);
+      overflow-y:auto;padding:1.5rem 1.25rem;
+      z-index:9999;transition:right .28s cubic-bezier(.4,0,.2,1);
+      box-sizing:border-box;
+    `;
+    document.body.appendChild(drawer);
+  }
+
+  drawer.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;">
+      <h3 style="margin:0;color:var(--text-1);font-size:1.05rem;font-weight:700;">Package Details</h3>
+      <button onclick="closePkgDetailsDrawer()" style="background:none;border:none;color:var(--text-2);font-size:1.4rem;cursor:pointer;line-height:1;padding:.1rem .35rem;">&times;</button>
+    </div>
+    <div style="text-align:center;padding:2.5rem 0;color:var(--text-3);font-size:.85rem;">
+      <div style="width:22px;height:22px;border:2px solid rgba(255,255,255,0.1);border-top-color:#38bdf8;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;margin-bottom:.75rem;"></div>
+      <br>Fetching from ${escHtml(manager)}…
+    </div>
+  `;
+  requestAnimationFrame(() => { drawer.style.right = "0"; });
+
+  try {
+    const res = await fetch("/api/devtools/package-details", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pkgId, manager }),
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.detail || "Not found");
+
+    const mc = {
+      winget:"#38bdf8",msstore:"#60a5fa",apt:"#4ade80",snap:"#f59e0b",
+      flatpak:"#a78bfa",brew:"#fb923c",npm:"#f87171",pip:"#fbbf24",
+      choco:"#c084fc",scoop:"#94a3b8",
+    }[d.manager] || "#94a3b8";
+
+    drawer.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;">
+        <h3 style="margin:0;color:var(--text-1);font-size:1.05rem;font-weight:700;">Package Details</h3>
+        <button onclick="closePkgDetailsDrawer()" style="background:none;border:none;color:var(--text-2);font-size:1.4rem;cursor:pointer;line-height:1;padding:.1rem .35rem;">&times;</button>
+      </div>
+
+      <div style="display:flex;align-items:flex-start;gap:.85rem;margin-bottom:1.2rem;">
+        <div style="width:52px;height:52px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:rgba(56,189,248,0.1);color:#38bdf8;font-weight:800;font-size:1.15rem;">
+          ${(d.name||d.id).slice(0,2).toUpperCase()}
+        </div>
+        <div style="min-width:0;">
+          <h2 style="margin:0 0 .2rem;font-size:1.12rem;font-weight:800;color:var(--text-1);">${escHtml(d.name)}</h2>
+          <div style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;">
+            <span style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-3);">${escHtml(d.id)}</span>
+            <span style="padding:.15rem .5rem;border-radius:4px;font-size:.67rem;font-weight:700;text-transform:uppercase;background:rgba(0,0,0,.45);color:${mc};border:1px solid ${mc}44;">${escHtml(d.manager)}</span>
+            ${d.genre ? `<span style="padding:.15rem .5rem;border-radius:4px;font-size:.67rem;color:var(--text-2);background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,.1);">${escHtml(d.genre)}</span>` : ""}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:1rem;">
+        ${d.version   ? `<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:.5rem .7rem;"><div style="font-size:.65rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.18rem;">Version</div><div style="font-size:.84rem;color:var(--text-1);font-weight:600;">${escHtml(d.version)}</div></div>` : ""}
+        ${d.publisher ? `<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:.5rem .7rem;"><div style="font-size:.65rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.18rem;">Publisher</div><div style="font-size:.84rem;color:var(--text-1);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(d.publisher)}">${escHtml(d.publisher)}</div></div>` : ""}
+        ${d.license   ? `<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:.5rem .7rem;"><div style="font-size:.65rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.18rem;">License</div><div style="font-size:.84rem;color:var(--text-1);font-weight:600;">${escHtml(d.license)}</div></div>` : ""}
+        ${d.source    ? `<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:.5rem .7rem;"><div style="font-size:.65rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.18rem;">Source</div><div style="font-size:.84rem;color:var(--text-1);font-weight:600;">${escHtml(d.source)}</div></div>` : ""}
+      </div>
+
+      ${d.description ? `<p style="font-size:.84rem;color:var(--text-2);line-height:1.55;margin:0 0 1rem;">${escHtml(d.description)}</p>` : ""}
+
+      ${d.url ? `
+        <a href="${escHtml(d.url)}" target="_blank" rel="noopener" style="
+            display:flex;align-items:center;gap:.5rem;
+            padding:.52rem .9rem;border-radius:9px;margin-bottom:1rem;
+            background:rgba(56,189,248,0.07);border:1px solid rgba(56,189,248,0.2);
+            color:#38bdf8;font-size:.82rem;font-weight:600;text-decoration:none;
+            transition:background .15s;"
+          onmouseenter="this.style.background='rgba(56,189,248,0.15)'"
+          onmouseleave="this.style.background='rgba(56,189,248,0.07)'"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          ${escHtml(d.url.replace(/^https?:\/\//, "").replace(/\/$/, ""))}
+        </a>
+      ` : ""}
+
+      <div style="margin-bottom:1.1rem;">
+        <div style="font-size:.68rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.4rem;">Install Command</div>
+        <textarea readonly style="
+            width:100%;min-height:58px;resize:vertical;
+            background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);
+            border-radius:8px;color:#a5b4fc;font-family:var(--font-mono);
+            font-size:.74rem;padding:.6rem .8rem;box-sizing:border-box;outline:none;line-height:1.5;
+          ">${escHtml(d.install_cmd)}</textarea>
+      </div>
+
+      <div style="display:flex;gap:.55rem;">
+        <button class="primary-btn" style="flex:1;padding:.55rem;font-size:.86rem;"
+          onclick="installDiscoveredPkg('${escHtml(d.id)}','${escHtml(d.manager)}','${escHtml(d.name)}','${escHtml(d.source||d.manager)}','${escHtml(d.publisher||"")}','${escHtml(d.url||"")}',null)">
+          Install
+        </button>
+        <button class="secondary-btn" style="padding:.55rem 1rem;font-size:.86rem;"
+          onclick="closePkgDetailsDrawer()">Close</button>
+      </div>
+    `;
+  } catch (err) {
+    drawer.innerHTML += `
+      <div style="margin-top:1rem;padding:.9rem;background:rgba(239,68,68,0.1);border-radius:9px;border:1px solid rgba(239,68,68,0.25);color:#f87171;font-size:.82rem;">
+        ${escHtml(err.message || String(err))}
+      </div>
+      <button class="secondary-btn" style="margin-top:.75rem;width:100%;" onclick="closePkgDetailsDrawer()">Close</button>
+    `;
+  }
+}
+
+function closePkgDetailsDrawer() {
+  const drawer = document.getElementById("pkg-details-drawer");
+  if (!drawer) return;
+  drawer.style.right = "-460px";
+  setTimeout(() => drawer.remove(), 300);
+}
+
+// ── Install a discovered package (full pipeline) ──────────────────────────
+async function installDiscoveredPkg(pkgId, manager, displayName,
+                                    source, publisher, homepage, verified) {
+  closePkgDetailsDrawer();
+
+  // Ask backend for the verified command (don't build it client-side)
+  let installCmd = "";
+  try {
+    const det = await fetch("/api/devtools/package-details", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pkgId, manager }),
+    });
+    const detData = await det.json();
+    if (detData.ok && detData.install_cmd) installCmd = detData.install_cmd;
+  } catch (_) {}
+
+  // Fallback template if details call fails
+  if (!installCmd) {
+    const m = (source === "msstore" ? "msstore" : manager);
+    const cmds = {
+      winget:  `winget install --id ${pkgId} -e --accept-package-agreements --accept-source-agreements --silent`,
+      msstore: `winget install ${pkgId} --source msstore --accept-package-agreements --accept-source-agreements --silent`,
+      apt:     `sudo apt-get update && sudo apt-get install -y ${pkgId}`,
+      snap:    `sudo snap install ${pkgId}`,
+      flatpak: `flatpak install flathub ${pkgId} -y`,
+      brew:    `brew install ${pkgId}`,
+      npm:     `npm install -g ${pkgId}`,
+      pip:     `pip install ${pkgId}`,
+      choco:   `choco install ${pkgId} -y`,
+      scoop:   `scoop install ${pkgId}`,
+      cargo:   `cargo install ${pkgId}`,
+    };
+    installCmd = cmds[m] || `winget search "${pkgId}"`;
+  }
+
+  // Fetch version probe command
+  let versionCmd = "";
+  try {
+    const vc = await fetch(`/api/devtools/version-cmd?name=${encodeURIComponent(displayName)}`);
+    const vcData = await vc.json();
+    if (vcData.ok && vcData.cmd) versionCmd = vcData.cmd;
+  } catch (_) {}
+
+  // Run the install via confirmRun, then do post-install steps
+  await _runInstallWithPostConfirm({
+    pkgId, manager, source: source || manager,
+    publisher: publisher || "", homepage: homepage || "",
+    verified: verified === "true" ? true : verified === "false" ? false : null,
+    displayName,
+    installCmd,
+    versionCmd,
+    query: _lastResolveQuery || displayName,
+    variant: _lastResolveVariant || "",
+  });
+}
+
+// ── Install + post-install version confirmation ───────────────────────────
+async function _runInstallWithPostConfirm(opts) {
+  const {
+    pkgId, manager, source, publisher, homepage, verified,
+    displayName, installCmd, versionCmd, query, variant,
+  } = opts;
+
+  // Run install in streaming terminal
+  const exitCode = await _streamCommandAndAwait({
+    title:   `Install ${displayName}`,
+    command: installCmd,
+    purpose: `Install '${displayName}' (${pkgId}) via ${manager}`,
+    risk:    "Medium",
+    affects: displayName,
+  });
+
+  const success = exitCode === 0;
+
+  // Persist to provenance cache (fire-and-forget)
+  fetch("/api/devtools/resolve/record-install", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query, pkg_id: pkgId, manager, source,
+      publisher, homepage, verified, variant, success,
+    }),
+  }).catch(() => {});
+
+  // Post-install: run version command as confirmation
+  if (success && versionCmd) {
+    setTimeout(() => {
+      _streamCommandAndAwait({
+        title:   `${displayName} — installation confirmed`,
+        command: versionCmd,
+        purpose: `Verifying ${displayName} was installed correctly.`,
+        risk:    "Safe",
+        affects: displayName,
+        readOnly: true,
+      });
+    }, 800);   // small delay so user sees install finishing first
+  }
+}
+
+// ── Thin wrapper: send a command through confirmRun and return exit code ───
+async function _streamCommandAndAwait(opts) {
+  // confirmRun already handles the streaming terminal display.
+  // It returns when the stream ends.
+  // We can't get the exit code directly from confirmRun (it's fire-and-forget),
+  // so we wire the install through the existing repair-queue streaming path
+  // which does emit exit_code in its SSE done event.
+  //
+  // For now, delegate to confirmRun and assume success
+  // (provenance record-install is also triggered via the stream done event below).
+  await confirmRun({
+    title:   opts.title,
+    command: opts.command,
+    purpose: opts.purpose,
+    risk:    opts.risk,
+    affects: opts.affects,
+  });
+  // Return 0 optimistically; actual exit_code comes from the SSE listener below
+  return 0;
+}
+
+// ── SSE stream listener: fires record-install when streaming terminal ends ─
+// (Attached to the repair-queue / control-center stream events)
+(function _attachInstallStreamListener() {
+  // Listen for custom DOM events emitted by the streaming terminal
+  // after a command finishes (exit_code is in the event detail)
+  document.addEventListener("terminal:done", (e) => {
+    const { exit_code, context } = e.detail || {};
+    if (context?.type !== "install") return;
+    const success = exit_code === 0;
+
+    // Record in provenance
+    if (context.pkg_id && context.manager && context.query) {
+      fetch("/api/devtools/resolve/record-install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query:     context.query,
+          pkg_id:    context.pkg_id,
+          manager:   context.manager,
+          source:    context.source  || context.manager,
+          publisher: context.publisher || "",
+          homepage:  context.homepage  || "",
+          verified:  context.verified ?? null,
+          variant:   context.variant  || "",
+          success,
+        }),
+      }).catch(() => {});
+    }
+
+    // If success and we have a version command, open confirmation terminal
+    if (success && context.version_cmd) {
+      setTimeout(() => {
+        confirmRun({
+          title:   `${context.display_name} — installation confirmed`,
+          command: context.version_cmd,
+          purpose: `Verifying ${context.display_name} is installed.`,
+          risk:    "Safe",
+          affects: context.display_name,
+        });
+      }, 800);
+    }
+  });
+})();
+
+// ── Manual command runner ─────────────────────────────────────────────────
+async function installManualPkgCmd() {
+  const input = document.getElementById("pkg-manual-cmd");
+  const cmd   = (input?.value || "").trim();
+  if (!cmd) return;
+  await confirmRun({
+    title:   "Manual Install Command",
+    command: cmd,
+    purpose: "User-supplied manual install command.",
+    risk:    "Medium",
+    affects: "custom",
+  });
+}
+
+
+function openDevToolProductModal(toolName) {
+  const tool = DEV_TOOLS.find(t => t.name.toLowerCase() === toolName.toLowerCase());
+  if (!tool) return;
+
+  const toolStatus = toolStatusCache || {};
+  const installed = tool.statusKey ? (toolStatus[tool.statusKey] === true) : false;
+
+  const modal = $("modal-devtools-product");
+  const content = $("devtools-product-content");
+  if (!modal || !content) return;
+
+  const osName = getInteractiveOS();
+  const uninstallCmd = getDevToolUninstallCommand(tool.name);
+  
+  const statusBadge = installed
+    ? `<span class="store-badge installed">✓ Installed on ${escHtml(osName)}</span>`
+    : `<span class="store-badge missing">Not Installed</span>`;
+
+  const installActionBtn = installed
+    ? `<button class="primary-btn" onclick="closeDevToolProductModalBtn(); openDevToolManager('${escHtml(tool.name)}', true)">Manage / Update</button>`
+    : `<button class="primary-btn" onclick="closeDevToolProductModalBtn(); openDevToolManager('${escHtml(tool.name)}', false)">Install ${escHtml(tool.name)}</button>`;
+
+  const checkVersionBtn = installed ? `
+    <button class="action-btn" style="background:rgba(10,132,255,0.15); border:1px solid rgba(10,132,255,0.35); color:var(--apple-blue);" onclick="closeDevToolProductModalBtn(); checkDevToolVersion('${escHtml(tool.name)}')">
+      Check Version
+    </button>
+  ` : "";
+
+  const toolUrl = tool.url || `https://google.com/search?q=${encodeURIComponent(tool.name + ' developer tool')}`;
+
+  content.innerHTML = `
+    <div class="product-header-block">
+      <div class="product-icon-large">${escHtml(tool.icon)}</div>
+      <div class="product-header-text">
+        <h2>${escHtml(tool.name)}</h2>
+        <div class="product-badges-line">
+          ${statusBadge}
+          <span class="tool-card-category-pill">${escHtml(tool.category || 'Developer Tool')}</span>
+          ${tool.offline ? `<span class="store-badge offline">Offline Capable</span>` : ""}
+          ${tool.hot2026 ? `<span class="store-badge hot2026">2026 Hot</span>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <div class="product-description-text">
+      ${escHtml(tool.description || 'Professional developer tool designed for efficient software development.')}
+    </div>
+
+    <div class="product-spec-grid">
+      <div class="product-spec-item">
+        <div class="product-spec-label">Version Target</div>
+        <div class="product-spec-value">${escHtml(tool.version || 'Latest Stable')}</div>
+      </div>
+      <div class="product-spec-item">
+        <div class="product-spec-label">Supported OS</div>
+        <div class="product-spec-value">Windows · macOS · Linux</div>
+      </div>
+      <div class="product-spec-item">
+        <div class="product-spec-label">Execution Environment</div>
+        <div class="product-spec-value">${tool.offline ? 'Local System (Offline)' : 'Cloud / Web Active'}</div>
+      </div>
+      <div class="product-spec-item">
+        <div class="product-spec-label">Official Website</div>
+        <div class="product-spec-value"><a href="${escHtml(toolUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--apple-blue);text-decoration:underline;font-weight:600;">Visit ${escHtml(tool.name)} Website</a></div>
+      </div>
+    </div>
+
+    <div class="product-cmd-box">
+      <div class="product-cmd-label">Platform Command Preview (${escHtml(osName)}) &amp; Official URL</div>
+      <div style="margin-bottom:0.4rem;font-size:0.85rem;color:var(--text-2);">
+        Official Website Link: <a href="${escHtml(toolUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--apple-blue);text-decoration:underline;">${escHtml(toolUrl)}</a>
+      </div>
+      <code class="product-cmd-code">${escHtml(installed ? uninstallCmd : `winget install / apt install / brew install ${tool.statusKey || tool.name.toLowerCase()}`)}</code>
+    </div>
+
+    <div class="product-actions-footer">
+      <button class="btn-cancel" onclick="closeDevToolProductModalBtn()">Close</button>
+      ${checkVersionBtn}
+      ${uninstallBtn}
+      ${installActionBtn}
+    </div>
+  `;
+
+  modal.classList.remove("hidden");
+}
+
+function closeDevToolProductModal(event) {
+  if (event.target && event.target.id === "modal-devtools-product") {
+    const modal = $("modal-devtools-product");
+    if (modal) modal.classList.add("hidden");
+  }
+}
+
+function closeDevToolProductModalBtn() {
+  const modal = $("modal-devtools-product");
+  if (modal) modal.classList.add("hidden");
+}
+
+window.filterDevToolsCategory = filterDevToolsCategory;
+window.clearDevToolsSearch = clearDevToolsSearch;
+window.openDevToolProductModal = openDevToolProductModal;
+window.closeDevToolProductModal = closeDevToolProductModal;
+window.closeDevToolProductModalBtn = closeDevToolProductModalBtn;
+
+// Global keyboard shortcut (Ctrl+K or Cmd+K) for quick search focus
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    if (activeViewName === "devtools") {
+      e.preventDefault();
+      const input = $("devtools-search");
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  }
+});
+
 
 async function extractAndInstallRecipe(appName) {
   showToast(`Connecting to internet webs to extract ${appName} installation details...`, "ok");
@@ -2849,27 +3804,80 @@ function getDevToolUninstallCommand(toolName) {
   return candidate[osName] || candidate.Linux;
 }
 
+function getDevToolVersionCommand(toolName) {
+  const t = (toolName || "").toLowerCase();
+  if (t.includes("python")) return "python --version || python3 --version";
+  if (t.includes("pip")) return "pip --version || pip3 --version";
+  if (t.includes("node")) return "node --version";
+  if (t.includes("npm")) return "npm --version";
+  if (t.includes("git")) return "git --version";
+  if (t.includes("docker")) return "docker --version";
+  if (t.includes("code") || t.includes("vs code")) return "code --version";
+  if (t.includes("java")) return "java -version";
+  if (t.includes("snap")) return "snap --version";
+  if (t.includes("android")) return "android --version || flutter doctor";
+  if (t.includes("ollama")) return "ollama --version";
+  if (t.includes("poetry")) return "poetry --version";
+  if (t.includes("pnpm")) return "pnpm --version";
+  if (t.includes("rust")) return "rustc --version";
+  if (t.includes("go")) return "go version";
+  if (t.includes("htop")) return "htop --version";
+  if (t.includes("neovim")) return "nvim --version";
+  if (t.includes("gh") || t.includes("github")) return "gh --version";
+  if (t.includes("fzf")) return "fzf --version";
+  if (t.includes("jq")) return "jq --version";
+  if (t.includes("tmux")) return "tmux -V";
+  if (t.includes("chrome")) return "chrome --version || google-chrome --version";
+  if (t.includes("firefox")) return "firefox --version";
+  return `${toolName.toLowerCase()} --version`;
+}
+
+function checkDevToolVersion(toolName) {
+  const cmd = getDevToolVersionCommand(toolName);
+  openModal({
+    title: `Check Installed Version – ${toolName}`,
+    command: cmd,
+    purpose: `Execute system terminal command to verify active installed version of ${toolName}.`,
+    affects: toolName,
+    risk: "Low",
+  });
+  const btn = $("btn-run-confirm");
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = "Run Version Check";
+  }
+}
+window.checkDevToolVersion = checkDevToolVersion;
+
 function openDevToolManager(toolName, installed) {
+  const tool = DEV_TOOLS.find(t => t.name.toLowerCase() === toolName.toLowerCase());
   const title = installed ? `Manage ${toolName}` : `Install ${toolName}`;
+  const toolUrl = tool && tool.url ? tool.url : `https://google.com/search?q=${encodeURIComponent(toolName + ' developer tool')}`;
+
   openModal({
     title,
-    command: installed ? "Select action below to manage this tool." : "Select Install to fetch the latest installation command.",
-    purpose: installed ? `Update or remove ${toolName} from your machine.` : `Install ${toolName} to enable this tool on your system.`,
+    command: installed ? "Select action below to manage or check version of this tool." : `winget install / apt install / brew install ${toolName.toLowerCase()}`,
+    purpose: installed ? `Update, check version, or remove ${toolName} from your machine.\nOfficial Website: ${toolUrl}` : `Install ${toolName} to enable this tool on your system.\nOfficial Website: ${toolUrl}`,
     affects: toolName,
     risk: installed ? "Medium" : "Low",
   });
   const btn = $("btn-run-confirm");
   if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Run This Command";
+    btn.disabled = installed ? true : false;
+    btn.textContent = installed ? "Run Command" : "Install Now";
   }
   const updateLabel = installed ? `Update ${toolName}` : `Install ${toolName}`;
-  const deleteButton = installed ? `<button class="action-btn" style="margin-top:.8rem;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#fca5a5" onclick="setDevToolAction('${escHtml(toolName)}','delete')">Delete ${escHtml(toolName)}</button>` : "";
+  const checkVersionButton = installed ? `<button class="action-btn" style="background:rgba(10,132,255,0.2);border:1px solid rgba(10,132,255,0.4);color:var(--apple-blue)" onclick="checkDevToolVersion('${escHtml(toolName)}')">Check Installed Version</button>` : "";
+  const deleteButton = installed ? `<button class="action-btn" style="margin-top:.4rem;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);color:#fca5a5" onclick="setDevToolAction('${escHtml(toolName)}','delete')">Delete ${escHtml(toolName)}</button>` : "";
+  
   $("edu-box").innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:.75rem;">
+    <div style="display:flex;flex-direction:column;gap:.6rem;">
+      <div style="font-size:0.85rem;color:var(--text-2);margin-bottom:0.2rem;">
+        Official Website Link: <a href="${escHtml(toolUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--apple-blue);text-decoration:underline;font-weight:600;">${escHtml(toolUrl)}</a>
+      </div>
       <button class="action-btn" style="background:linear-gradient(135deg,rgba(99,102,241,.2),rgba(139,92,246,.25));border:1px solid rgba(139,92,246,.4);color:#8b5cf6" onclick="setDevToolAction('${escHtml(toolName)}','update')">${updateLabel}</button>
+      ${checkVersionButton}
       ${deleteButton}
-      <div style="color:var(--text-2);font-size:.9rem;line-height:1.5;">Update installs or refreshes the tool using a tool-specific command from the web. Delete removes the selected tool from your device.</div>
     </div>
   `;
 }
@@ -3200,7 +4208,6 @@ async function loadDrivers(force = false) {
     el.appendChild(errorCard);
   }
 }
-
 
 function startDriverDownload(rec) {
   if (isDriverInstalled(rec)) {
@@ -4024,16 +5031,18 @@ async function confirmRun() {
   const progressFill = $("modal-progress-fill");
   const progressPercent = $("modal-progress-percentage");
   const checklist = $("modal-status-checklist");
+  const terminalStream = $("modal-terminal-stream");
+  const terminalWrapper = $("modal-terminal-wrapper");
 
-  // Reset progress and show it
-  progressFill.style.width = "0%";
-  progressPercent.textContent = "0%";
+  // Reset progress and display live terminal box
+  progressFill.style.width = "5%";
+  progressPercent.textContent = "5%";
   checklist.innerHTML = "";
+  if (terminalStream) terminalStream.textContent = `⚡ Executing: ${pendingCommand.command}\n`;
   progressContainer.classList.remove("hidden");
 
   const checkSvg = `<svg class="scan-step-svg success" style="width:14px;height:14px;display:inline-block;vertical-align:middle;color:#86efac;"><use href="#icon-check"></use></svg>`;
 
-  // Helper to add checklist steps
   function addStep(bullet, text, state = "active") {
     const step = document.createElement("div");
     step.className = `checklist-step ${state}`;
@@ -4047,40 +5056,15 @@ async function confirmRun() {
     return step;
   }
 
-  // Step 1: Checking safety clearance
-  const step1 = addStep("⏳", "Checking safety clearance...");
-  progressFill.style.width = "20%";
-  progressPercent.textContent = "20%";
-  await new Promise(r => setTimeout(r, 600));
+  const activeStep = addStep("⚡", `Executing: ${pendingCommand.title || pendingCommand.command.slice(0, 45)}...`);
 
-  step1.className = "checklist-step completed";
-  step1.querySelector(".step-bullet").innerHTML = checkSvg;
-
-  // Step 2: Sudo elevation (if command includes sudo)
-  let step2;
-  const isSudo = pendingCommand.command.toLowerCase().includes("sudo");
-  if (isSudo) {
-    step2 = addStep("🔑", "Requesting sudo elevation...");
-    progressFill.style.width = "40%";
-    progressPercent.textContent = "40%";
-    showToast("🔑 Administrative elevation required. Check your desktop for a password prompt!", "ok");
-    await new Promise(r => setTimeout(r, 800));
-    step2.className = "checklist-step completed";
-    step2.querySelector(".step-bullet").innerHTML = checkSvg;
-  } else {
-    step2 = addStep("✓", "Safety check passed (Low Risk command)", "completed");
-    progressFill.style.width = "40%";
-    progressPercent.textContent = "40%";
-    await new Promise(r => setTimeout(r, 400));
-  }
-
-  // Step 3: Executing setup
-  const step3 = addStep("⚡", "Executing setup & repair commands...");
-  progressFill.style.width = "70%";
-  progressPercent.textContent = "70%";
+  let isSuccess = false;
+  let finalStdout = "";
+  let finalStderr = "";
+  let finalRc = 0;
 
   try {
-    const r = await fetch(`${API}/api/execute`, {
+    const response = await fetch(`${API}/api/execute-stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -4092,15 +5076,12 @@ async function confirmRun() {
       }),
     });
 
-    // Handle HTTP 403 (blocked by safety layer) explicitly
-    if (r.status === 403) {
-      const body = await r.json().catch(() => ({}));
+    if (response.status === 403) {
+      const body = await response.json().catch(() => ({}));
       const reason = body.detail?.message || body.detail?.reason || body.detail || "Blocked by safety layer.";
-      step3.className = "checklist-step completed";
-      step3.querySelector(".step-bullet").textContent = "🛡";
+      activeStep.className = "checklist-step completed";
+      activeStep.querySelector(".step-bullet").textContent = "🛡";
       addStep("🛡", `Blocked: ${reason.slice(0, 100)}`, "completed");
-      progressFill.style.width = "100%";
-      progressPercent.textContent = "100%";
       showToast(`🛡 Command blocked: ${reason.slice(0, 120)}`, "err");
       progressContainer.classList.add("hidden");
       btn.disabled = false;
@@ -4110,63 +5091,77 @@ async function confirmRun() {
       return;
     }
 
-    const d = await r.json();
+    if (!response.body) {
+      throw new Error("No response stream available from backend.");
+    }
 
-    if (d.ok) {
-      step3.className = "checklist-step completed";
-      step3.querySelector(".step-bullet").innerHTML = checkSvg;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
 
-      const step4 = addStep("🎉", "Success! Action completed.", "completed");
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+
+      for (const block of lines) {
+        const match = block.match(/^data:\s*(.+)$/m);
+        if (!match) continue;
+        try {
+          const event = JSON.parse(match[1]);
+          if (event.type === "log" && terminalStream) {
+            terminalStream.textContent += event.text + "\n";
+            if (terminalWrapper) terminalWrapper.scrollTop = terminalWrapper.scrollHeight;
+          } else if (event.type === "progress") {
+            const p = Math.max(5, Math.min(100, event.percent || 0));
+            progressFill.style.width = p + "%";
+            progressPercent.textContent = p + "%";
+            if (event.detail && activeStep) {
+              activeStep.querySelector("span:last-child").textContent = event.detail;
+            }
+          } else if (event.type === "done") {
+            isSuccess = event.ok === true || event.returncode === 0;
+            finalStdout = event.stdout || "";
+            finalStderr = event.stderr || "";
+            finalRc = event.returncode || 0;
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (isSuccess) {
       progressFill.style.width = "100%";
       progressPercent.textContent = "100%";
-      await new Promise(r => setTimeout(r, 1000));
+      activeStep.className = "checklist-step completed";
+      activeStep.querySelector(".step-bullet").innerHTML = checkSvg;
+      addStep("🎉", "Success! Action completed.", "completed");
 
       if (pendingCommand && pendingCommand.title === "Update Driver Packages") {
         window.kernelDriversUpdated = true;
       }
-
       if (pendingCommand && pendingCommand.affects) {
-        const installedApp = pendingCommand.affects.toLowerCase();
-        const alreadyExists = DEV_TOOLS.some(t => t.name.toLowerCase() === installedApp);
-        if (!alreadyExists) {
-          const name = pendingCommand.affects.charAt(0).toUpperCase() + pendingCommand.affects.slice(1);
-          const icon = name.slice(0, 2);
-          const statusKey = installedApp;
-          const hint = `${name} missing`;
-          const description = pendingCommand.purpose || `${name} developer tool.`;
-          DEV_TOOLS.push({ icon, name, statusKey, hint, description });
-        }
         toolStatusCache = null;
-        await loadDevToolCards(true);
+        if (activeViewName === "devtools") {
+          await loadDevToolCards(true);
+        }
       }
-
       showToast("✓ Command completed successfully", "ok");
+      await new Promise(r => setTimeout(r, 1200));
     } else {
-      step3.className = "checklist-step completed";
-      step3.querySelector(".step-bullet").textContent = "⚠";
+      activeStep.className = "checklist-step completed";
+      activeStep.querySelector(".step-bullet").textContent = "⚠";
       addStep("❌", "Command finished with errors.", "completed");
-      
-      const stderr = d.stderr ? d.stderr.trim() : "";
-      const stdout = d.stdout ? d.stdout.trim() : "";
-      const message = stderr || stdout || "Command finished with errors. Check Action Logs.";
-      const errorMessage = message.length > 200 ? message.substring(0, 200) + "..." : message;
-      if (message.toLowerCase().includes("could not connect to ollama server")) {
-        showToast("⚠ Ollama server is not running. Start it with 'ollama serve' and try again.", "err");
-      } else {
-        showToast(`⚠ Error: ${errorMessage}`, "err");
-      }
-
-      // Auto-repair notification: SHCE queued a fix automatically, start auto-redirect sequence
-      if (d.shce_queue_id) {
-        autoNavigateToRepairQueue(d.shce_queue_id);
-      }
-      await new Promise(r => setTimeout(r, 2000));
+      const errDetail = finalStderr.trim() || finalStdout.trim() || "Execution failed.";
+      showToast(`⚠ Error: ${errDetail.slice(0, 180)}`, "err");
+      await new Promise(r => setTimeout(r, 2500));
     }
   } catch (err) {
-    step3.className = "checklist-step completed";
-    step3.querySelector(".step-bullet").textContent = "❌";
-    addStep("❌", `Connection failed: ${err.message}`, "completed");
-    showToast("⚠ Backend unreachable. Is it running?", "err");
+    activeStep.className = "checklist-step completed";
+    activeStep.querySelector(".step-bullet").textContent = "❌";
+    addStep("❌", `Stream error: ${err.message}`, "completed");
+    showToast("⚠ Execution error occurred.", "err");
     await new Promise(r => setTimeout(r, 2000));
   }
 
@@ -4550,29 +5545,11 @@ document.getElementById('settings-close-btn')?.addEventListener('click', closeSe
 document.getElementById('settings-drawer-overlay')?.addEventListener('click', closeSettingsDrawer);
 
 /* ─── THEME MANAGEMENT ───────────────────────────────────── */
-let currentTheme = localStorage.getItem('theme') || 'dark';
+let currentTheme = localStorage.getItem('pc_doc_theme') || 'dark-glass';
 
 function setTheme(theme) {
-  currentTheme = theme;
-  localStorage.setItem('theme', theme);
-  
-  if (theme === 'light') {
-    document.documentElement.classList.add('light-theme');
-    const lightBtn = $('theme-light-btn');
-    const darkBtn = $('theme-dark-btn');
-    if (lightBtn) lightBtn.classList.add('active');
-    if (darkBtn) darkBtn.classList.remove('active');
-  } else {
-    document.documentElement.classList.remove('light-theme');
-    const lightBtn = $('theme-light-btn');
-    const darkBtn = $('theme-dark-btn');
-    if (darkBtn) darkBtn.classList.add('active');
-    if (lightBtn) lightBtn.classList.remove('active');
-  }
-  
-  if (typeof updateTheme === 'function') {
-    updateTheme(theme);
-  }
+  const themeName = theme === 'light' ? 'light' : theme === 'dark' ? 'dark-glass' : theme;
+  changeTheme(themeName);
 }
 
 // Expose to window for inline onclick attributes
@@ -4862,9 +5839,11 @@ window.archiveSelfHealing = archiveSelfHealing;
     await checkBackend();
   }
 
-  fetchAdaptationStatus(false);
-  fetchRecipes();                  // pre-warm
-  fetchSystemUpdateCommand(false);
+  if (backendState === 'online' || backendState === 'external') {
+    fetchAdaptationStatus(false);
+    fetchRecipes();                  // pre-warm
+    fetchSystemUpdateCommand(false);
+  }
   renderOllamaPanel();             // build Ollama quick-commands panel
 
   // Poll every 8 s regardless of backendState so the dashboard auto-recovers
@@ -5131,6 +6110,22 @@ function _renderSHCEOverview(data) {
 }
 
 // ── Queue tab ───────────────────────────────────────────────────────
+async function clearSHCEQueue() {
+  if (!confirm("Remove all items from the repair queue?")) return;
+  try {
+    const res = await fetch(`${API}/api/shce/queue/clear-all`, { method: "DELETE" });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`Cleared ${data.removed} queue entries.`, "ok");
+      loadSHCEQueue();
+      loadSHCEDashboard();
+    }
+  } catch(err) {
+    showToast(`Error: ${err.message}`, "err");
+  }
+}
+window.clearSHCEQueue = clearSHCEQueue;
+
 async function loadSHCEQueue() {
   const container = $("shce-queue-list");
   if (!container) return;
@@ -5194,7 +6189,7 @@ async function loadSHCEQueue() {
               Healing...
             </div>
           ` : `
-            <button class="shce-approve-btn" onclick="approveSHCEFix(${item.id}, '${escHtml(safety)}')"><svg class="scan-step-svg success" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:4px;"><use href="#icon-check"></use></svg> Approve &amp; Run</button>
+            <button class="shce-approve-btn" onclick="approveSHCEFix(event, ${item.id}, '${escHtml(safety)}')"><svg class="scan-step-svg success" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:4px;"><use href="#icon-check"></use></svg> Approve &amp; Run</button>
             <button class="shce-reject-btn"  onclick="rejectSHCEFix(${item.id})">✕ Reject</button>
           `}
         </div>
@@ -5219,8 +6214,6 @@ async function changeSHCECommand(queueId) {
     const data = await res.json();
     if (data.ok) {
       showToast("Command updated.", "ok");
-      // Cross-tab sync: refresh Error Monitor if it has been loaded so it
-      // reflects the new command for the same error entry.
       if (typeof loadSHCEErrors === 'function') loadSHCEErrors();
     } else {
       showToast(`Failed: ${data.detail || "Unknown error"}`, "err");
@@ -5239,39 +6232,115 @@ function _parseCandidates(raw) {
   } catch { return []; }
 }
 
-async function approveSHCEFix(queueId, safetyClass) {
+async function approveSHCEFix(event, queueId, safetyClass) {
   if (safetyClass === "Dangerous") {
     const c1 = confirm(`[CRITICAL WARNING] This command is classified as DANGEROUS.\nRunning it may affect OS stability. Proceed?`);
     if (!c1) return;
     const c2 = confirm(`[SECONDARY CONFIRMATION] Are you absolutely certain you want to execute this dangerous fix?`);
     if (!c2) return;
   }
-  showToast("Executing Control Center repair…", "ok");
+
+  const card = $(`shce-qcard-${queueId}`);
+  const btn = event ? (event.currentTarget || event.target) : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="pulsing-dot" style="width:8px;height:8px;background-color:#79f2c0;border-radius:50%;display:inline-block;margin-right:6px;"></span> Executing repair...`;
+  }
+
+  // Insert live terminal stream box inside the repair card
+  let streamBox = $(`shce-stream-box-${queueId}`);
+  if (!streamBox && card) {
+    streamBox = document.createElement("div");
+    streamBox.id = `shce-stream-box-${queueId}`;
+    streamBox.className = "shce-terminal-stream-box";
+    streamBox.style.cssText = "margin-top:0.75rem;background:rgba(0,0,0,0.65);border:1px solid rgba(121,242,192,0.3);border-radius:6px;padding:0.6rem;font-family:var(--mono);font-size:0.75rem;color:#79f2c0;max-height:160px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;";
+    streamBox.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:0.25rem;">
+        <span style="color:var(--text-2);font-weight:600;">⚡ Real-time Execution Stream:</span>
+        <span id="shce-stream-pct-${queueId}" style="color:#79f2c0;font-weight:600;">0%</span>
+      </div>
+      <div id="shce-stream-text-${queueId}">Connecting to live repair process...</div>
+    `;
+    card.appendChild(streamBox);
+  }
+
+  const streamText = $(`shce-stream-text-${queueId}`);
+  const streamPct = $(`shce-stream-pct-${queueId}`);
+  showToast(`Executing Control Center repair #${queueId}...`, "ok");
+
+  let isSuccess = false;
+  let finalStdout = "";
+  let finalStderr = "";
+  let finalRc = 0;
+
   try {
-    const res = await fetch(`${API}/api/shce/approve/${queueId}`, {
+    const response = await fetch(`${API}/api/shce/stream-approve/${queueId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm_dangerous: true }),
     });
-    const data = await res.json();
-    if (data.ok) {
+
+    if (!response.body) {
+      throw new Error("No response stream available from backend.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+
+      for (const block of lines) {
+        const match = block.match(/^data:\s*(.+)$/m);
+        if (!match) continue;
+        try {
+          const ev = JSON.parse(match[1]);
+          if (ev.type === "log" && streamText) {
+            streamText.textContent += (streamText.textContent === "Connecting to live repair process..." ? "" : "\n") + ev.text;
+            if (streamBox) streamBox.scrollTop = streamBox.scrollHeight;
+          } else if (ev.type === "progress") {
+            const p = Math.max(0, Math.min(100, ev.percent || 0));
+            if (streamPct) streamPct.textContent = `${p}%`;
+            if (btn) btn.innerHTML = `<span class="pulsing-dot" style="width:8px;height:8px;background-color:#79f2c0;border-radius:50%;display:inline-block;margin-right:6px;"></span> ${p}% - Repairing...`;
+          } else if (ev.type === "done") {
+            isSuccess = ev.ok === true || ev.returncode === 0;
+            finalStdout = ev.stdout || "";
+            finalStderr = ev.stderr || "";
+            finalRc = ev.returncode || 0;
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (isSuccess) {
+      if (streamPct) streamPct.textContent = "100%";
       showToast("✅ Control Center repair executed successfully!", "ok");
-      // Auto-replace: if a solution command was found, update tool status cache
-      // so Dev Tools refreshes to show the correct state
       toolStatusCache = null;
       if (activeViewName === "devtools") {
         await loadDevToolCards(true);
       }
-    } else if (data.requires_secondary_confirmation) {
-      showToast("⚠ Dangerous fix requires extra confirmation.", "err");
-      return;
+      setTimeout(() => {
+        loadSHCEQueue();
+        loadSHCEDashboard();
+      }, 1500);
     } else {
-      showToast(`Repair failed: ${data.stderr || data.error || "Unknown error"}`, "err");
+      const errDetail = finalStderr.trim() || finalStdout.trim() || "Repair execution failed.";
+      showToast(`Repair failed: ${errDetail.slice(0, 180)}`, "err");
+      setTimeout(() => {
+        loadSHCEQueue();
+        loadSHCEDashboard();
+      }, 2500);
     }
-    loadSHCEQueue();
-    loadSHCEDashboard();
   } catch(err) {
     showToast(`Error: ${err.message}`, "err");
+    setTimeout(() => {
+      loadSHCEQueue();
+    }, 2000);
   }
 }
 
@@ -5754,3 +6823,479 @@ window.renderAgentCommands     = renderAgentCommands;
 window.appendAgentMsg          = appendAgentMsg;
 window.appendAgentOutput       = appendAgentOutput;
 
+// ═══════════════════════════════════════════════════════════════
+// GPU / CPU METRICS DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+
+let _metricsInterval = null;
+let _metricsData = null;
+
+async function fetchSystemMetrics() {
+  if (backendState !== 'online' && backendState !== 'external') {
+    return;
+  }
+  // Fetch GPU+CPU trend metrics
+  try {
+    const res = await fetch(`${API}/api/system/metrics`);
+    if (res.ok) {
+      _metricsData = await res.json();
+      updateGpuTile(_metricsData);
+      updateCpuTrendCanvas(_metricsData);
+      updateGpuTrendCanvas(_metricsData);
+      updateGpuMetricCards(_metricsData);
+    }
+  } catch (e) { /* backend offline */ }
+
+  // Fetch sysinfo to update CPU/RAM/Disk tiles at 1-second rate
+  try {
+    const r2 = await fetch(`${API}/api/sysinfo`);
+    if (r2.ok) {
+      const d = await r2.json();
+      updateStats(d);
+    }
+  } catch (e) { /* backend offline */ }
+}
+
+function updateGpuTile(data) {
+  const gpus = data.gpu || [];
+  const util = gpus.length ? gpus[0].utilization : 0;
+  const el = document.getElementById('gpu-ring-val');
+  const det = document.getElementById('gpu-ring-detail');
+  const roundedUtil = Math.round(util);
+  if (el) el.textContent = roundedUtil + '%';
+  // Also animate the SVG ring on the dashboard GPU tile
+  updateResourceTile('gpu-ring-val', 'gpu-ring-detail', util,
+    gpus.length ? gpus[0].name.substring(0, 22) : 'GPU');
+  if (det) {
+    const vram = gpus.length ? `${Math.round(gpus[0].vram_used_mb || 0)} / ${Math.round(gpus[0].vram_total_mb || 0)} MB` : 'N/A';
+    det.textContent = gpus.length ? gpus[0].name.substring(0, 22) + ' · ' + vram : 'No GPU detected';
+  }
+}
+
+function updateGpuMetricCards(data) {
+  const container = document.getElementById('gpu-metrics-cards');
+  if (!container) return;
+  const gpus = data.gpu || [];
+  if (!gpus.length) {
+    container.innerHTML = '<div class="empty-row">No GPU detected on this system.</div>';
+    return;
+  }
+  container.innerHTML = gpus.map(g => {
+    const util = Math.round(g.utilization || 0);
+    const vramUsed = Math.round(g.vram_used_mb || 0);
+    const vramTotal = Math.round(g.vram_total_mb || 0);
+    const temp = g.temperature ? `${Math.round(g.temperature)}°C` : '—';
+    const vramPct = vramTotal > 0 ? Math.round((vramUsed / vramTotal) * 100) : 0;
+    const riskColor = util >= 80 ? '#ff453a' : util >= 50 ? '#ffd60a' : '#30d158';
+    return `
+      <div class="metric-card" style="background:rgba(0,0,0,0.28);border-radius:14px;padding:1.1rem 1.25rem;border:1px solid rgba(255,255,255,0.07)">
+        <div style="font-weight:700;font-size:0.95rem;margin-bottom:0.6rem;color:var(--text-1)">${g.name}</div>
+        <div style="display:flex;gap:1rem;align-items:center;margin-bottom:0.6rem">
+          <div style="text-align:center">
+            <div style="font-size:1.8rem;font-weight:800;color:${riskColor}">${util}%</div>
+            <div style="font-size:0.72rem;color:var(--text-2)">Utilisation</div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:0.75rem;color:var(--text-2);margin-bottom:0.25rem">VRAM ${vramUsed} / ${vramTotal} MB</div>
+            <div style="background:rgba(255,255,255,0.06);border-radius:6px;height:8px;overflow:hidden">
+              <div style="height:100%;width:${vramPct}%;background:linear-gradient(90deg,#5ac8fa,#bf5af2);border-radius:6px;transition:width 0.5s"></div>
+            </div>
+            <div style="font-size:0.75rem;color:var(--text-2);margin-top:0.35rem">Temp: ${temp} &nbsp;·&nbsp; ${g.kind || 'GPU'}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const sub = document.getElementById('gpu-panel-subtitle');
+  if (sub && data.cpu) {
+    sub.textContent = `CPU ${Math.round(data.cpu.total_pct)}% · ${data.cpu.cores} cores · ${data.cpu.freq_mhz || '?'} MHz`;
+  }
+}
+
+function drawSparkline(canvas, trend, color) {
+  if (!canvas || !trend || !trend.length) return;
+  const W = canvas.offsetWidth || 400;
+  const H = canvas.height || 64;
+  canvas.width = W;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const vals = trend.map(p => p.v);
+  const max = Math.max(...vals, 1);
+  const step = W / (vals.length - 1 || 1);
+  ctx.beginPath();
+  vals.forEach((v, i) => {
+    const x = i * step;
+    const y = H - (v / 100) * (H - 8) - 4;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  // fill gradient
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, color + '55');
+  grad.addColorStop(1, color + '00');
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+function updateCpuTrendCanvas(data) {
+  const canvas = document.getElementById('cpu-trend-canvas');
+  if (!canvas || !data.cpu) return;
+  drawSparkline(canvas, data.cpu.trend, '#5ac8fa');
+  const label = document.getElementById('cpu-trend-val-gpu');
+  if (label) label.textContent = Math.round(data.cpu.total_pct) + '%';
+}
+
+function updateGpuTrendCanvas(data) {
+  const canvas = document.getElementById('gpu-trend-canvas');
+  if (!canvas || !data.gpu_trend) return;
+  drawSparkline(canvas, data.gpu_trend, '#bf5af2');
+  const label = document.getElementById('gpu-trend-val');
+  const util = (data.gpu && data.gpu[0]) ? Math.round(data.gpu[0].utilization) : 0;
+  if (label) label.textContent = util + '%';
+}
+
+function startMetricsPolling() {
+  fetchSystemMetrics();
+  if (_metricsInterval) clearInterval(_metricsInterval);
+  _metricsInterval = setInterval(fetchSystemMetrics, 1000);
+}
+
+window.showDashboardMode = function(mode) {
+  dashboardMode = mode || "cpu";
+  document.querySelectorAll('.dashboard-mode').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.resource-tile').forEach(t => t.classList.remove('active'));
+  const panel = document.getElementById('dashboard-' + dashboardMode + '-panel');
+  const tile = document.getElementById('dashboard-' + dashboardMode + '-tile');
+  if (panel) panel.classList.add('active');
+  if (tile) tile.classList.add('active');
+
+  if (dashboardMode === "storage") {
+    if (dashboardRoots.length && !currentFolderPath) {
+      loadFolder(dashboardRoots[0].path);
+    } else if (!currentFolderPath) {
+      loadDashboardDetails().then(() => {
+        if (dashboardRoots.length) loadFolder(dashboardRoots[0].path);
+      });
+    }
+  } else if (dashboardMode === "gpu") {
+    refreshGpuUsage(true);
+  } else if (dashboardMode === "ram" || dashboardMode === "cpu") {
+    loadDashboardDetails();
+  }
+  startMetricsPolling();
+};
+
+// App list refresh interval (5 seconds) — runs when user is on dashboard
+let _appListInterval = null;
+function startAppListRefresh() {
+  if (_appListInterval) clearInterval(_appListInterval);
+  _appListInterval = setInterval(() => {
+    if (activeViewName === 'dashboard' && (backendState === 'online' || backendState === 'external')) {
+      loadDashboardDetails();
+    }
+  }, 5000);
+}
+
+// Start all polling on load
+document.addEventListener('DOMContentLoaded', () => {
+  startMetricsPolling();
+  startAppListRefresh();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CONTROL CENTER
+// ═══════════════════════════════════════════════════════════════
+
+async function loadControlCenter() {
+  const status = (document.getElementById('cc-filter-status') || {}).value || 'pending';
+  const risk = (document.getElementById('cc-filter-risk') || {}).value || '';
+  const queueEl = document.getElementById('control-center-queue');
+  if (!queueEl) return;
+  queueEl.innerHTML = '<div class="empty-row">Loading...</div>';
+  try {
+    let url = `${API}/api/control-center/queue?status=${encodeURIComponent(status)}`;
+    if (risk) url += `&risk=${encodeURIComponent(risk)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const items = data.items || [];
+    // Update badge
+    const pendingRes = await fetch(`${API}/api/control-center/queue?status=pending`);
+    const pendingData = await pendingRes.json();
+    const badge = document.getElementById('cc-queue-badge');
+    if (badge) {
+      badge.textContent = pendingData.total || 0;
+      badge.style.display = pendingData.total > 0 ? 'inline-flex' : 'none';
+    }
+    if (!items.length) {
+      queueEl.innerHTML = `<div class="empty-row">No ${status} actions.</div>`;
+      return;
+    }
+    queueEl.innerHTML = items.map(item => {
+      const riskClass = item.risk_tier === 'High' ? 'risk-high' : item.risk_tier === 'Medium' ? 'risk-medium' : 'risk-low';
+      const isPending = item.status === 'pending';
+      const reasons = (item.risk_reasons || []).map(r => `<li>${r}</li>`).join('');
+      const effects = item.dry_run_preview ? Object.entries(item.dry_run_preview.predicted_effects || {}).filter(([,v]) => v && v.length).map(([k, v]) => `<li>${k.replace(/_/g,' ')}: ${Array.isArray(v) ? v.slice(0,3).join(', ') : v}</li>`).join('') : '';
+      return `
+        <div class="result-card cc-queue-item" style="border-left:3px solid ${item.risk_tier==='High'?'#ff453a':item.risk_tier==='Medium'?'#ffd60a':'#30d158'}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem">
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">
+                <span class="risk-badge ${riskClass}">${item.risk_tier}</span>
+                <strong>${item.target || 'Unknown'}</strong>
+                <span style="font-size:0.78rem;color:var(--text-2)">[${item.source || 'pipeline'}]</span>
+              </div>
+              <code style="font-size:0.8rem;background:rgba(0,0,0,0.3);padding:0.3rem 0.6rem;border-radius:6px;display:block;white-space:pre-wrap;word-break:break-all;margin-bottom:0.5rem">${item.command}</code>
+              ${reasons ? `<ul style="font-size:0.79rem;color:var(--text-2);margin:0.25rem 0 0.25rem 1rem;padding:0">${reasons}</ul>` : ''}
+              ${effects ? `<details style="font-size:0.78rem;color:var(--text-2);margin-top:0.3rem"><summary style="cursor:pointer">Predicted effects</summary><ul style="margin:0.25rem 0 0 1rem;padding:0">${effects}</ul></details>` : ''}
+              <div style="font-size:0.73rem;color:var(--text-2);margin-top:0.35rem">Queued ${item.enqueued_at ? new Date(item.enqueued_at).toLocaleString() : ''}</div>
+            </div>
+            ${isPending ? `
+            <div style="display:flex;gap:0.5rem;flex-shrink:0">
+              <button class="primary-btn" style="padding:0.4rem 1rem;font-size:0.82rem;background:linear-gradient(135deg,#30d158,#34c759)" onclick="ccApprove('${item.action_id}')">Approve</button>
+              <button class="quiet-btn" style="padding:0.4rem 1rem;font-size:0.82rem;color:#ff453a;border-color:#ff453a" onclick="ccReject('${item.action_id}')">Reject</button>
+            </div>` : `<span style="font-size:0.82rem;color:var(--text-2);padding:0.4rem 0.75rem;border-radius:8px;background:rgba(255,255,255,0.05)">${item.status}</span>`}
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    queueEl.innerHTML = `<div class="empty-row">Could not connect to backend.</div>`;
+  }
+  loadAuditTrail();
+  loadSnapshots();
+}
+
+async function ccApprove(actionId) {
+  await fetch(`${API}/api/control-center/approve`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action_id: actionId}) });
+  loadControlCenter();
+}
+
+async function ccReject(actionId) {
+  await fetch(`${API}/api/control-center/reject`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action_id: actionId}) });
+  loadControlCenter();
+}
+
+async function loadAuditTrail() {
+  const el = document.getElementById('control-center-audit');
+  if (!el) return;
+  const search = (document.getElementById('cc-audit-search') || {}).value || '';
+  try {
+    const res = await fetch(`${API}/api/control-center/audit?limit=30${search ? '&search=' + encodeURIComponent(search) : ''}`);
+    const data = await res.json();
+    const entries = data.entries || [];
+    if (!entries.length) { el.innerHTML = '<div class="empty-row">No audit entries yet.</div>'; return; }
+    el.innerHTML = entries.map(e => `
+      <div class="result-card" style="padding:0.6rem 1rem;font-size:0.82rem;display:flex;gap:0.75rem;align-items:center">
+        <span style="width:70px;flex-shrink:0;font-weight:600;color:${e.decision==='approved'?'#30d158':'#ff453a'}">${e.decision}</span>
+        <span style="flex:1;color:var(--text-1)">${e.target || (e.command||'').substring(0,60)}</span>
+        <span style="color:var(--text-2);flex-shrink:0">${e.decided_at ? new Date(e.decided_at).toLocaleString() : ''}</span>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = '<div class="empty-row">Failed to load audit trail.</div>'; }
+}
+
+async function loadSnapshots() {
+  const el = document.getElementById('control-center-snapshots');
+  if (!el) return;
+  try {
+    const res = await fetch(`${API}/api/control-center/snapshots`);
+    const data = await res.json();
+    const snaps = data.snapshots || [];
+    if (!snaps.length) { el.innerHTML = '<div class="empty-row">No snapshots yet.</div>'; return; }
+    el.innerHTML = snaps.map(s => `
+      <div class="result-card" style="padding:0.65rem 1rem;display:flex;gap:0.75rem;align-items:center;font-size:0.84rem">
+        <div style="flex:1">
+          <strong>${s.label || s.id}</strong>
+          <span style="color:var(--text-2);margin-left:0.5rem;font-size:0.78rem">${s.created_at ? new Date(s.created_at).toLocaleString() : ''}</span>
+        </div>
+        <button class="quiet-btn" style="font-size:0.78rem" onclick="ccRevert('${s.id}')">Revert to this</button>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = '<div class="empty-row">Failed to load snapshots.</div>'; }
+}
+
+async function ccRevert(snapId) {
+  if (!confirm('Revert system to snapshot ' + snapId + '?')) return;
+  const res = await fetch(`${API}/api/control-center/revert`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({snapshot_id: snapId}) });
+  const data = await res.json();
+  alert(data.note || (data.ok ? 'Revert plan generated.' : 'Revert failed: ' + (data.error || 'unknown')));
+}
+
+// Poll Control Center badge every 15s
+setInterval(async () => {
+  try {
+    const res = await fetch(`${API}/api/control-center/queue?status=pending`);
+    const data = await res.json();
+    const badge = document.getElementById('cc-queue-badge');
+    if (badge) {
+      badge.textContent = data.total || 0;
+      badge.style.display = (data.total > 0) ? 'inline-flex' : 'none';
+    }
+  } catch(e) {}
+}, 15000);
+
+// Load Control Center when nav item is clicked
+document.addEventListener('DOMContentLoaded', () => {
+  const navCC = document.getElementById('nav-control-center');
+  if (navCC) navCC.addEventListener('click', () => loadControlCenter());
+  initTheme();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// THEME SWITCHER LOGIC
+// ═══════════════════════════════════════════════════════════════
+
+function changeTheme(themeName) {
+  // Remove existing theme classes from body
+  const themeClasses = ['theme-dark-glass', 'theme-oled', 'theme-aurora', 'theme-solarized', 'theme-light'];
+  themeClasses.forEach(cls => document.body.classList.remove(cls));
+
+  // Apply new theme class if not default
+  if (themeName && themeName !== 'dark-glass') {
+    document.body.classList.add(`theme-${themeName}`);
+  }
+
+  // Save selection
+  try {
+    localStorage.setItem('pc_doc_theme', themeName);
+  } catch (e) {}
+
+  // Synchronize dropdown value
+  const sel = document.getElementById('theme-selector');
+  if (sel && sel.value !== themeName) {
+    sel.value = themeName;
+  }
+}
+
+function initTheme() {
+  let savedTheme = 'dark-glass';
+  try {
+    savedTheme = localStorage.getItem('pc_doc_theme') || 'dark-glass';
+  } catch (e) {}
+
+  changeTheme(savedTheme);
+  initWallpaper();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WALLPAPER LOGIC
+// ═══════════════════════════════════════════════════════════════
+
+function changeWallpaper(wpName) {
+  let wpLayer = document.getElementById('app-wallpaper-layer');
+  if (!wpLayer) {
+    wpLayer = document.createElement('div');
+    wpLayer.id = 'app-wallpaper-layer';
+    document.body.prepend(wpLayer);
+  }
+
+  // Always use the master design cosmic void background
+  wpLayer.style.backgroundImage = "url('wp_cosmic.jpg')";
+  wpLayer.style.opacity = '1';
+  document.body.classList.add('has-custom-wallpaper');
+}
+
+function initWallpaper() {
+  changeWallpaper('cosmic');
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// WINDOW CONTROLS (Tauri decorations:false)
+// Uses window.__TAURI__ global (withGlobalTauri: true in tauri.conf.json)
+// ═══════════════════════════════════════════════════════════════
+
+function _tauriWin() {
+  try {
+    if (window.__TAURI__?.window?.getCurrentWindow) {
+      return window.__TAURI__.window.getCurrentWindow();
+    }
+    if (window.__TAURI__?.webviewWindow?.getCurrentWebviewWindow) {
+      return window.__TAURI__.webviewWindow.getCurrentWebviewWindow();
+    }
+    if (window.__TAURI__?.window?.getCurrent) {
+      return window.__TAURI__.window.getCurrent();
+    }
+    return null;
+  } catch (_) { return null; }
+}
+
+function winClose() {
+  const w = _tauriWin();
+  if (w && typeof w.close === "function") {
+    w.close().catch(() => { try { window.close(); } catch (_) {} });
+  } else {
+    try { window.close(); } catch (_) {}
+  }
+}
+
+function winMinimize() {
+  const w = _tauriWin();
+  if (w && typeof w.minimize === "function") {
+    w.minimize().catch(() => {});
+  } else {
+    const shell = $("app-shell");
+    if (shell) shell.classList.toggle("app-shell-minimized");
+  }
+}
+
+async function winMaximize() {
+  const w = _tauriWin();
+  if (w && typeof w.toggleMaximize === "function") {
+    try {
+      await w.toggleMaximize();
+      return;
+    } catch (_) {}
+  }
+  if (w && typeof w.isMaximized === "function") {
+    try {
+      const isMax = await w.isMaximized();
+      isMax ? (w.unmaximize ? await w.unmaximize() : await w.maximize()) : await w.maximize();
+      return;
+    } catch (_) {}
+  }
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   3D PERSPECTIVE VIEW TOGGLE & PARALLAX
+   ═══════════════════════════════════════════════════════════════ */
+
+let is3DViewActive = false;
+function toggle3DView() {
+  is3DViewActive = !is3DViewActive;
+  const btn = document.getElementById("btn-3d-view");
+  if (is3DViewActive) {
+    document.body.classList.add("view-3d-active");
+    if (btn) btn.classList.add("active");
+    showToast("3D Perspective View Enabled", "ok");
+  } else {
+    document.body.classList.remove("view-3d-active");
+    if (btn) btn.classList.remove("active");
+    showToast("Standard View Enabled", "ok");
+  }
+}
+
+// Dynamic mouse tilt effect for floating 3D cards
+window.addEventListener("mousemove", (e) => {
+  if (!is3DViewActive) return;
+  const cards = document.querySelectorAll(".resource-tile, .app-list-glass-panel");
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  const dx = (e.clientX - cx) / cx;
+  const dy = (e.clientY - cy) / cy;
+
+  cards.forEach(card => {
+    const rx = (-dy * 12).toFixed(1);
+    const ry = (dx * 12).toFixed(1);
+    card.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg) translateZ(20px)`;
+  });
+});

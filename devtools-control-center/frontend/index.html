@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevTools Store & Control Center</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="theme-dark-glass">
+  <div class="app-wallpaper-layer" id="app-wallpaper-layer"></div>
+
+  <!-- SVG Icon Sprite -->
+  <svg style="display:none;">
+    <symbol id="icon-store" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>
+    </symbol>
+    <symbol id="icon-apps" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+    </symbol>
+    <symbol id="icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </symbol>
+    <symbol id="icon-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </symbol>
+  </svg>
+
+  <div class="app-shell" id="app-shell">
+    
+    <!-- ── Sidebar Navigation ── -->
+    <aside class="sidebar-nav">
+      <div class="brand-block">
+        <div class="brand-icon">
+          <svg style="width:20px;height:20px;"><use href="#icon-shield"></use></svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title">DevEngine</div>
+          <div class="brand-subtitle">Tools &amp; Control</div>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <button class="nav-item active" data-view="devtools" id="nav-devtools" onclick="switchView('devtools')">
+          <svg class="nav-icon"><use href="#icon-store"></use></svg>
+          <span class="nav-label">Dev Tools Store</span>
+        </button>
+
+        <button class="nav-item" data-view="myapps" id="nav-myapps" onclick="switchView('myapps')">
+          <svg class="nav-icon"><use href="#icon-apps"></use></svg>
+          <span class="nav-label">My Applications</span>
+          <span class="nav-badge" id="myapps-count-badge" style="display:none;">0</span>
+        </button>
+
+        <button class="nav-item nav-control-center" data-view="control-center" id="nav-control-center" onclick="switchView('control-center')">
+          <svg class="nav-icon"><use href="#icon-shield"></use></svg>
+          <span class="nav-label">Control Center</span>
+          <span class="nav-badge alert" id="cc-queue-badge" style="display:none;">0</span>
+        </button>
+
+        <button class="nav-item" data-view="settings" id="nav-settings" onclick="switchView('settings')">
+          <svg class="nav-icon"><use href="#icon-settings"></use></svg>
+          <span class="nav-label">Settings</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="system-status-indicator">
+          <span class="status-dot online" id="backend-status-dot"></span>
+          <span class="status-text" id="backend-status-text">Backend Active</span>
+        </div>
+        <div class="os-pill" id="os-badge">OS: Windows</div>
+      </div>
+    </aside>
+
+    <!-- ── Main Content Area ── -->
+    <main class="main-viewport">
+
+      <!-- Top Global Bar -->
+      <header class="global-topbar">
+        <div class="topbar-left">
+          <div class="active-view-indicator">
+            <span class="view-dot"></span>
+            <span id="topbar-view-title">Dev Tools Store</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="theme-switcher">
+            <button class="theme-btn-toggle" onclick="toggleTheme()" title="Toggle Dark/Light Mode">
+              <span id="theme-toggle-icon">🌙</span>
+            </button>
+          </div>
+          <button class="topbar-refresh-btn" onclick="refreshActiveView()" title="Refresh current view">
+            <svg style="width:14px;height:14px;"><use href="#icon-refresh"></use></svg>
+            <span>Refresh</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           VIEW 1: DEV TOOLS STORE
+           ═══════════════════════════════════════════════════════════════ -->
+      <section class="view-panel active" id="view-devtools">
+        <!-- Compact Store Topbar -->
+        <div class="store-topbar-row">
+          <h1 class="store-main-title">Developer Tools Store</h1>
+          <div class="store-top-actions">
+            <button class="primary-btn" onclick="openDevDoctorModal()" title="Run developer environment health check & auto-repair">
+              <span>🩺</span> Dev Doctor &amp; Auto-Repair
+            </button>
+          </div>
+        </div>
+
+        <!-- Search Box -->
+        <div class="store-search-container" style="margin-bottom:1rem;">
+          <div class="store-search-box">
+            <svg class="search-icon"><use href="#icon-search"></use></svg>
+            <input type="text" id="devtools-search" class="store-search-input" placeholder="Search apps, IDEs, runtimes, CLI tools, npm packages, pip packages..." oninput="searchDevTools()" autocomplete="off" />
+            <button id="devtools-search-clear" class="store-search-clear hidden" onclick="clearDevToolsSearch()" title="Clear search">&times;</button>
+            <span class="store-search-kbd">Ctrl K</span>
+          </div>
+        </div>
+
+
+        <!-- Dev Doctor Banner Summary -->
+        <div id="dev-doctor-banner" class="dev-doctor-banner glass">
+          <div class="doctor-banner-content">
+            <div class="doctor-score-circle">
+              <span class="doctor-score-num" id="banner-health-score">--%</span>
+              <span class="doctor-score-lbl">Health</span>
+            </div>
+            <div class="doctor-banner-text">
+              <div class="doctor-banner-title">
+                <strong>Dev Environment Health:</strong>
+                <span id="banner-health-status">Diagnosing environment...</span>
+              </div>
+              <p class="doctor-banner-desc" id="banner-health-stats">Checking installed runtimes and developer toolchains.</p>
+            </div>
+          </div>
+          <div class="doctor-banner-actions">
+            <button class="secondary-btn btn-sm" id="btn-doctor-rescan" onclick="runDevDoctorScan()">
+              <svg style="width:13px;height:13px;"><use href="#icon-refresh"></use></svg>
+              Re-Scan
+            </button>
+            <button class="primary-btn btn-sm" onclick="openDevDoctorModal()">View Stacks &amp; Auto-Repair</button>
+          </div>
+        </div>
+
+        <!-- Category Bar -->
+        <div class="store-category-bar">
+          <div class="store-category-scroll" id="devtools-category-nav">
+            <button class="category-pill active" onclick="filterDevToolsCategory('all')">All Tools</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('popular')">Popular</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('trending')">🔥 Trending</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('alltime')">⭐ All-Time Best</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('hot2026')">⚡ 2026 Hot</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('ides')">IDEs &amp; Editors</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('languages')">Languages &amp; Compilers</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('frameworks')">Frameworks &amp; Package Managers</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('databases')">Databases</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('devops')">DevOps &amp; Cloud</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('vcs')">Git &amp; VCS</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('cli')">CLI Utilities</button>
+            <button class="category-pill" onclick="filterDevToolsCategory('testing')">Testing &amp; APIs</button>
+          </div>
+        </div>
+
+        <!-- Hero Spotlight Section -->
+        <div id="devtools-hero-container" class="store-hero-container">
+          <!-- Populated dynamically by JS -->
+        </div>
+
+        <!-- Search Status Header -->
+        <div id="devtools-search-status" class="store-search-status hidden">
+          <div class="search-status-text">
+            <h2 id="devtools-search-title" class="search-status-title">Search Results</h2>
+            <span id="devtools-search-count" class="search-status-count">0 tools</span>
+          </div>
+          <button class="quiet-btn" onclick="clearDevToolsSearch()">Show All Store Sections</button>
+        </div>
+
+        <!-- Store Curated Sections -->
+        <div id="devtools-store-sections" class="store-sections-wrapper">
+          <!-- Populated dynamically by JS -->
+        </div>
+
+        <!-- Dynamic Grid (for search results and category filters) -->
+        <div class="card-grid store-grid hidden" id="devtools-grid">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           VIEW 2: MY APPLICATIONS
+           ═══════════════════════════════════════════════════════════════ -->
+      <section class="view-panel" id="view-myapps">
+        <div class="view-header compact-header">
+          <h1 class="view-title-text text-cyan">My Applications</h1>
+          <div class="header-actions">
+            <button class="secondary-btn btn-sm" id="myapps-refresh-btn" onclick="loadMyApps()">
+              <svg style="width:13px;height:13px;"><use href="#icon-refresh"></use></svg>
+              Refresh
+            </button>
+            <button class="primary-btn btn-sm" id="myapps-update-all-btn" onclick="updateAllApps()">
+              <svg style="width:13px;height:13px;"><use href="#icon-bolt"></use></svg>
+              Update All
+            </button>
+          </div>
+        </div>
+
+        <!-- Stat Row -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon text-cyan"><svg><use href="#icon-apps"></use></svg></div>
+            <div class="stat-body">
+              <div class="stat-value" id="myapps-stat-total">0</div>
+              <div class="stat-label">Installed Apps</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon text-green"><svg><use href="#icon-check"></use></svg></div>
+            <div class="stat-body">
+              <div class="stat-value" id="myapps-stat-up-to-date">Verified</div>
+              <div class="stat-label">System State</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon text-purple"><svg><use href="#icon-bolt"></use></svg></div>
+            <div class="stat-body">
+              <div class="stat-value" id="myapps-stat-manager">All PMs</div>
+              <div class="stat-label">Package Managers</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="store-search-container" style="margin-bottom: 1.25rem;">
+          <div class="store-search-box">
+            <svg class="search-icon"><use href="#icon-search"></use></svg>
+            <input type="text" id="myapps-search-input" class="store-search-input" placeholder="Filter verified installed applications by name or category..." oninput="filterMyApps()" autocomplete="off" />
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div class="store-empty-state hidden" id="myapps-empty">
+          <div class="empty-icon">📦</div>
+          <h3 class="empty-title">No installed developer tools detected</h3>
+          <p class="empty-desc">Install developer tools from the Dev Tools Store and they will appear here with version tracking and 1-click update streams.</p>
+          <button class="primary-btn" onclick="switchView('devtools')">Browse Dev Tools Store</button>
+        </div>
+
+        <!-- Grid of Installed Apps -->
+        <div class="store-grid" id="myapps-grid">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           VIEW 3: CONTROL CENTER
+           ═══════════════════════════════════════════════════════════════ -->
+      <section class="view-panel" id="view-control-center">
+        <div class="view-header compact-header">
+          <h1 class="view-title-text text-blue">Control Center</h1>
+          <div class="header-filters">
+            <select id="cc-filter-status" class="filter-select" onchange="loadControlCenter()">
+              <option value="pending">Pending Approvals</option>
+              <option value="approved">Approved Actions</option>
+              <option value="rejected">Rejected Actions</option>
+              <option value="">All Statuses</option>
+            </select>
+            <select id="cc-filter-risk" class="filter-select" onchange="loadControlCenter()">
+              <option value="">All Risk Tiers</option>
+              <option value="High">High Risk</option>
+              <option value="Medium">Medium Risk</option>
+              <option value="Low">Low Risk</option>
+            </select>
+            <button class="secondary-btn btn-sm" onclick="loadControlCenter()">
+              <svg style="width:13px;height:13px;"><use href="#icon-refresh"></use></svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Approval Queue -->
+        <div class="cc-section-header">
+          <div>
+            <h2>Pending Approval Queue</h2>
+            <span class="section-subtext">Review queued installation and modification actions</span>
+          </div>
+          <div class="cc-batch-actions">
+            <button class="primary-btn btn-sm" onclick="batchApprovePending()" title="Approve all currently pending actions">
+              <svg style="width:13px;height:13px;"><use href="#icon-check"></use></svg>
+              Approve All
+            </button>
+            <button class="danger-btn btn-sm" onclick="batchRejectPending()" title="Reject all currently pending actions">
+              &times; Reject All
+            </button>
+          </div>
+        </div>
+        <div id="control-center-queue" class="results-list">
+          <div class="empty-row">Loading approval queue...</div>
+        </div>
+
+        <!-- Audit Trail -->
+        <div class="cc-section-header" style="margin-top:2rem;">
+          <div>
+            <h2>Audit Trail</h2>
+            <span class="section-subtext">Immutable log of security decisions and operations</span>
+          </div>
+          <div class="cc-audit-toolbar">
+            <div class="search-box-mini">
+              <input type="text" id="cc-audit-search" class="search-input-mini" placeholder="Search audit trail..." oninput="loadAuditTrail()" />
+            </div>
+            <button class="secondary-btn btn-sm" onclick="exportAuditTrail('csv')" title="Download audit log as CSV">
+              📥 Export CSV
+            </button>
+            <button class="secondary-btn btn-sm" onclick="exportAuditTrail('json')" title="Download audit log as JSON">
+              📄 JSON
+            </button>
+          </div>
+        </div>
+        <div id="control-center-audit" class="results-list">
+          <div class="empty-row">Loading audit trail...</div>
+        </div>
+
+        <!-- System Snapshots & Rollback -->
+        <div class="cc-section-header" style="margin-top:2rem;">
+          <div>
+            <h2>System Snapshots &amp; Rollback</h2>
+            <span class="section-subtext">Restore points created prior to sensitive actions</span>
+          </div>
+          <div style="display:flex;gap:0.5rem;">
+            <button class="secondary-btn btn-sm" onclick="openSnapshotDiffModal()">
+              🔍 Compare Snapshots
+            </button>
+            <button class="secondary-btn btn-sm" onclick="createManualSnapshot()">+ Create Snapshot</button>
+          </div>
+        </div>
+        <div id="control-center-snapshots" class="results-list">
+          <div class="empty-row">Loading system snapshots...</div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           VIEW 4: SETTINGS
+           ═══════════════════════════════════════════════════════════════ -->
+      <section class="view-panel" id="view-settings">
+        <div class="view-header compact-header">
+          <h1 class="view-title-text">Settings &amp; Diagnostics</h1>
+        </div>
+
+
+        <div class="settings-card glass">
+          <h3 class="setting-title">Interface Style &amp; Theme</h3>
+          <p class="setting-subtitle">Select your preferred glassmorphic visual presentation.</p>
+          <div class="theme-grid">
+            <button class="theme-option-card active" id="btn-theme-dark" onclick="changeTheme('dark-glass')">
+              <div class="theme-preview dark"></div>
+              <span>Dark Glass</span>
+            </button>
+            <button class="theme-option-card" id="btn-theme-oled" onclick="changeTheme('oled')">
+              <div class="theme-preview oled"></div>
+              <span>OLED Pure Black</span>
+            </button>
+            <button class="theme-option-card" id="btn-theme-aurora" onclick="changeTheme('aurora')">
+              <div class="theme-preview aurora"></div>
+              <span>Aurora Nebula</span>
+            </button>
+            <button class="theme-option-card" id="btn-theme-light" onclick="changeTheme('light')">
+              <div class="theme-preview light"></div>
+              <span>Light Frosted</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-card glass" style="margin-top:1.5rem;">
+          <h3 class="setting-title">Trust Tier Policies</h3>
+          <p class="setting-subtitle">Control whether actions require manual approval in the Control Center or execute automatically.</p>
+          <div class="trust-tier-row">
+            <div>
+              <strong>DevTools Installation</strong>
+              <div style="font-size:0.8rem;color:var(--text-2)">Installing new compilers, IDEs, and binary tools</div>
+            </div>
+            <select id="trust-devtools-install" onchange="updateTrustPolicy('devtools_install', this.value)" class="filter-select">
+              <option value="always_require_approval">Always Require Approval</option>
+              <option value="always_allow">Always Allow</option>
+              <option value="default">Default (Smart Risk)</option>
+            </select>
+          </div>
+          <div class="trust-tier-row">
+            <div>
+              <strong>Package Updates</strong>
+              <div style="font-size:0.8rem;color:var(--text-2)">Updating existing installed applications</div>
+            </div>
+            <select id="trust-devtools-update" onchange="updateTrustPolicy('devtools_update', this.value)" class="filter-select">
+              <option value="always_allow">Always Allow</option>
+              <option value="always_require_approval">Always Require Approval</option>
+              <option value="default">Default</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-card glass" style="margin-top:1.5rem;">
+          <h3 class="setting-title">Environment Information</h3>
+          <div id="system-info-box" class="code-box" style="margin-top:0.75rem;padding:0.75rem 1rem;font-size:0.82rem;">
+            Loading environment information...
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MODAL: PRODUCT DETAILS DRAWER
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modal-devtools-product" onclick="closeDevToolProductModal(event)">
+    <div class="modal-card glass store-product-modal" id="devtools-product-card">
+      <button class="product-modal-close" onclick="closeDevToolProductModalBtn()" title="Close details">&times;</button>
+      <div id="devtools-product-content">
+        <!-- Injected by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MODAL: DEV ENVIRONMENT DOCTOR, STACKS & AUTO-REPAIR
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modal-dev-doctor" onclick="closeDevDoctorModal(event)">
+    <div class="modal-card glass doctor-modal" id="dev-doctor-card">
+      <div class="modal-header">
+        <div>
+          <h2>🩺 Dev Environment Doctor &amp; Auto-Repair Finder</h2>
+          <p style="font-size:0.85rem;color:var(--text-2);margin-top:0.25rem;">Automated system diagnostics, curated stacks, and RAG-powered auto-repairs.</p>
+        </div>
+        <button class="product-modal-close" onclick="closeDevDoctorModalBtn()">&times;</button>
+      </div>
+
+      <!-- Doctor Navigation Tabs -->
+      <div class="doctor-tabs-bar">
+        <button class="doctor-tab-btn active" id="btn-doc-tab-health" onclick="switchDoctorTab('health')">
+          📊 Health &amp; Diagnostics
+        </button>
+        <button class="doctor-tab-btn" id="btn-doc-tab-stacks" onclick="switchDoctorTab('stacks')">
+          📦 1-Click Stacks
+        </button>
+        <button class="doctor-tab-btn" id="btn-doc-tab-repairs" onclick="switchDoctorTab('repairs')">
+          🔧 Auto-Repair Finder (RAG)
+          <span class="nav-badge alert" id="doc-repair-badge" style="display:none;">0</span>
+        </button>
+      </div>
+
+      <div class="doctor-modal-body">
+        <!-- Tab 1: Health & Diagnostics -->
+        <div class="doctor-tab-panel active" id="panel-doc-health">
+          <div class="doctor-diagnostics-section">
+            <div class="doctor-health-meter">
+              <div class="doctor-meter-circle">
+                <span id="doc-modal-score">--%</span>
+                <small>Health</small>
+              </div>
+              <div class="doctor-meter-stats">
+                <div><strong id="doc-modal-ready-count">0</strong> of <strong id="doc-modal-total-count">0</strong> core developer tools installed</div>
+                <div id="doc-modal-status-text" style="color:var(--accent-cyan);font-weight:600;margin-top:0.25rem;">Scanning system...</div>
+              </div>
+            </div>
+            <div class="doctor-checks-grid" id="doc-modal-checks-grid">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Curated 1-Click Stacks -->
+        <div class="doctor-tab-panel" id="panel-doc-stacks" style="display:none;">
+          <div class="stacks-grid" id="doc-modal-stacks-grid">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Tab 3: Automatic Repair Finder (RAG) -->
+        <div class="doctor-tab-panel" id="panel-doc-repairs" style="display:none;">
+          <div class="repair-finder-header">
+            <div>
+              <h3 style="font-size:1rem;margin-bottom:0.25rem;">Active Environment Anomalies &amp; Solutions</h3>
+              <p style="font-size:0.82rem;color:var(--text-2);">Verified fixes retrieved from the RAG knowledge base for your operating system.</p>
+            </div>
+            <button class="secondary-btn btn-sm" onclick="runAutoRepairScan()">
+              <svg style="width:12px;height:12px;"><use href="#icon-refresh"></use></svg>
+              Re-Scan Issues
+            </button>
+          </div>
+          <div id="doc-modal-repairs-list" class="repairs-list-container" style="margin-top:1rem;">
+            <div class="empty-row">Scanning for environment anomalies...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MODAL: SNAPSHOT DIFF & COMPARISON
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modal-snapshot-diff" onclick="closeSnapshotDiffModal(event)">
+    <div class="modal-card glass diff-modal">
+      <div class="modal-header">
+        <div>
+          <h2>🔍 System Snapshot Comparison</h2>
+          <p style="font-size:0.85rem;color:var(--text-2);margin-top:0.25rem;">Compare installed packages and environment variables between restore points.</p>
+        </div>
+        <button class="product-modal-close" onclick="closeSnapshotDiffModalBtn()">&times;</button>
+      </div>
+
+      <div class="diff-selectors-row">
+        <div class="form-group" style="flex:1;">
+          <label>Base Snapshot (Before):</label>
+          <select id="diff-snap-1" class="form-input" onchange="runSnapshotDiff()"></select>
+        </div>
+        <div class="diff-arrow">➔</div>
+        <div class="form-group" style="flex:1;">
+          <label>Target Snapshot (After):</label>
+          <select id="diff-snap-2" class="form-input" onchange="runSnapshotDiff()"></select>
+        </div>
+      </div>
+
+      <div id="snapshot-diff-output" class="snapshot-diff-output">
+        <div class="empty-row">Select two snapshots above to view differences.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MODAL: LIVE COMMAND EXECUTION TERMINAL
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modal-terminal-console">
+    <div class="modal-card glass terminal-modal">
+      <div class="modal-header terminal-header">
+        <div class="terminal-title-group">
+          <div class="terminal-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <span class="terminal-title" id="term-title">Executing: Command</span>
+          <span class="status-pill active" id="term-status-badge">Running</span>
+        </div>
+        <div class="terminal-header-actions">
+          <button class="terminal-action-btn" onclick="copyTerminalOutput()" title="Copy output">📋 Copy</button>
+          <button class="terminal-action-btn" onclick="clearTerminalOutput()" title="Clear screen">Clear</button>
+          <button class="product-modal-close" onclick="closeTerminalModal()">&times;</button>
+        </div>
+      </div>
+
+      <div class="terminal-body" id="term-body">
+        <pre class="terminal-output" id="term-output"></pre>
+      </div>
+
+      <div class="terminal-footer">
+        <div class="terminal-meta" id="term-meta">Process started...</div>
+        <button class="secondary-btn btn-sm" onclick="closeTerminalModal()">Close Terminal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MODAL: COMMAND EXECUTION & DRY RUN
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modal-command-run" onclick="closeCommandModal(event)">
+    <div class="modal-card glass command-run-modal" id="command-modal-card">
+      <div class="modal-header">
+        <h2 id="cmd-modal-title">Review &amp; Run Action</h2>
+        <span class="risk-badge Medium" id="cmd-modal-risk">Medium</span>
+      </div>
+      <p id="cmd-modal-purpose" style="font-size:0.88rem;color:var(--text-2);margin:0.5rem 0 1rem;"></p>
+      
+      <div class="command-preview-box">
+        <label>Command to Execute:</label>
+        <code id="cmd-modal-code">...</code>
+      </div>
+
+      <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.5rem;">
+        <button class="secondary-btn" onclick="closeCommandModalBtn()">Cancel</button>
+        <button class="primary-btn" id="cmd-modal-confirm-btn" onclick="executeCommandModalAction()">Queue in Control Center</button>
+        <button class="secondary-btn" id="cmd-modal-term-btn" onclick="runCommandInLiveTerminal()">⚡ Run in Live Terminal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MODAL: MANAGE INSTALLED TOOL (Update / Reinstall / Uninstall)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay hidden" id="modal-manage-tool" onclick="closeManageToolModal(event)">
+    <div class="modal-card glass command-run-modal" id="manage-tool-card" style="max-width:540px;">
+      <div class="modal-header">
+        <div>
+          <h2 id="manage-tool-title">Manage Tool</h2>
+          <p id="manage-tool-subtitle" style="font-size:0.82rem;color:var(--text-2);margin-top:0.2rem;"></p>
+        </div>
+        <button class="product-modal-close" onclick="closeManageToolModalBtn()" title="Close">&times;</button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:0.85rem;margin-top:0.5rem;">
+
+        <!-- Update -->
+        <div class="command-preview-box" style="border-color:var(--accent-cyan);padding:0.9rem 1rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+            <label style="color:var(--accent-cyan);font-weight:700;font-size:0.82rem;">⬆ UPDATE — Get latest version</label>
+            <div style="display:flex;gap:0.4rem;">
+              <button class="secondary-btn btn-sm" onclick="manageToolAction('update','queue')" title="Queue in Control Center">📥 Queue</button>
+              <button class="primary-btn btn-sm" onclick="manageToolAction('update','run')" title="Run in Live Terminal">⚡ Run</button>
+            </div>
+          </div>
+          <code id="manage-cmd-update" style="font-size:0.78rem;word-break:break-all;">...</code>
+        </div>
+
+        <!-- Reinstall -->
+        <div class="command-preview-box" style="border-color:var(--accent-blue);padding:0.9rem 1rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+            <label style="color:var(--accent-blue);font-weight:700;font-size:0.82rem;">🔄 REINSTALL — Clean reinstall</label>
+            <div style="display:flex;gap:0.4rem;">
+              <button class="secondary-btn btn-sm" onclick="manageToolAction('reinstall','queue')">📥 Queue</button>
+              <button class="primary-btn btn-sm" onclick="manageToolAction('reinstall','run')">⚡ Run</button>
+            </div>
+          </div>
+          <code id="manage-cmd-reinstall" style="font-size:0.78rem;word-break:break-all;">...</code>
+        </div>
+
+        <!-- Uninstall -->
+        <div class="command-preview-box" style="border-color:#f87171;padding:0.9rem 1rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+            <label style="color:#f87171;font-weight:700;font-size:0.82rem;">🗑 UNINSTALL — Remove from system</label>
+            <div style="display:flex;gap:0.4rem;">
+              <button class="secondary-btn btn-sm" onclick="manageToolAction('uninstall','queue')">📥 Queue</button>
+              <button class="danger-btn btn-sm" onclick="manageToolAction('uninstall','run')">⚡ Run</button>
+            </div>
+          </div>
+          <code id="manage-cmd-uninstall" style="font-size:0.78rem;word-break:break-all;">...</code>
+        </div>
+
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:1.25rem;">
+        <button class="secondary-btn" onclick="closeManageToolModalBtn()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="main.js"></script>
+</body>
+</html>
+

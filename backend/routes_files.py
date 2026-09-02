@@ -1,4 +1,5 @@
 import os
+import time
 import platform
 import shutil
 from pathlib import Path
@@ -42,6 +43,9 @@ CRITICAL_PROCESS_NAMES = {
     "login", "sshd", "bash", "zsh", "fish", "python", "python3",
     "uvicorn", "pc doctor", "codex", "mutter", "gjs",
     "xdg-desktop-portal", "tracker-miner", "gnome-session", "gsd-", "at-spi",
+    "system", "svchost", "explorer", "csrss", "smss", "wininit", "services",
+    "lsass", "fontdrvhost", "dwm", "taskhostw", "ctfmon", "spoolsv", "conhost",
+    "runtimebroker", "sihost", "taskmgr", "securityhealthservice", "searchhost"
 }
 
 BROWSER_PROCESS_NAMES = {"brave", "brave-browser", "brave-browser-stable", "chrome", "chromium", "chromium-browser"}
@@ -235,19 +239,7 @@ def _process_dashboard_status(proc: psutil.Process, current_uid: Optional[int]) 
                 if uids is not None and uids.real != current_uid:
                     return None
             except (psutil.AccessDenied, psutil.NoSuchProcess, AttributeError):
-                try:
-                    username = info.get("username") or proc.username()
-                    if not username:
-                        return None
-                except (psutil.AccessDenied, psutil.NoSuchProcess):
-                    return None
-        else:
-            try:
-                username = info.get("username") or proc.username()
-                if not username:
-                    return None
-            except (psutil.AccessDenied, psutil.NoSuchProcess):
-                return None
+                pass
 
         critical = any(blocked in name for blocked in CRITICAL_PROCESS_NAMES)
         category_label = "Necessary Windows process" if platform.system() == "Windows" else "Necessary Linux app"
@@ -300,9 +292,15 @@ def _system_disk_path() -> str:
     return "/"
 
 
+_dashboard_resources_cache = {"timestamp": 0, "payload": None}
+
 @router.get("/api/dashboard/resources")
 async def dashboard_resources():
     """Return dashboard-only disk folders and stoppable user apps."""
+    now = time.time()
+    if _dashboard_resources_cache["payload"] is not None and (now - _dashboard_resources_cache["timestamp"]) < 2.5:
+        return _dashboard_resources_cache["payload"]
+
     home = Path.home()
     roots = [
         {"label": "Home", "path": str(home), "read_only": True},
@@ -313,45 +311,51 @@ async def dashboard_resources():
             roots.append({"label": folder_name, "path": str(p), "read_only": True})
     roots.append({"label": "OS Files", "path": _system_disk_path(), "read_only": True})
 
-
     current_uid = os.getuid() if hasattr(os, "getuid") else None
     app_groups = {}
 
-    proc_attrs = ["pid", "name", "cpu_percent", "memory_percent", "cmdline"]
+    proc_attrs = ["pid", "name", "memory_info", "cpu_percent"]
     if platform.system() != "Windows":
         proc_attrs.append("uids")
+
+    num_cores = psutil.cpu_count() or 1
+    total_mem = psutil.virtual_memory().total or 1
 
     for proc in psutil.process_iter(proc_attrs):
         try:
             info = proc.info
             name = info.get("name") or ""
+            if not name:
+                continue
             status = _process_dashboard_status(proc, current_uid)
             if status is None:
                 continue
-            cmdline = " ".join(info.get("cmdline") or [])
+
+            mem_info = info.get("memory_info")
+            rss_bytes = mem_info.rss if mem_info else 0
 
             if name not in app_groups:
                 app_groups[name] = {
                     "name": name,
-                    "command": cmdline[:140] if cmdline else "",
+                    "command": name,
                     "cpu_percent": 0.0,
                     "memory_percent": 0.0,
+                    "memory_mb": 0.0,
                     "process_count": 0,
                     "pids": [],
                     "stoppable": status["stoppable"],
                     "category": status["category"],
-                    "browser_control": _is_browser_name(name),
+                    "browser_control": False,
                 }
             group = app_groups[name]
             group["pids"].append(info["pid"])
             group["process_count"] += 1
-            group["cpu_percent"] += float(info.get("cpu_percent") or 0)
-            group["memory_percent"] += float(info.get("memory_percent") or 0)
+            group["cpu_percent"] += float(info.get("cpu_percent") or 0) / num_cores
+            group["memory_mb"] += rss_bytes / (1024 * 1024)
+            group["memory_percent"] += (rss_bytes / total_mem) * 100.0
             group["stoppable"] = group["stoppable"] and status["stoppable"]
             if not group["stoppable"]:
                 group["category"] = "Necessary Windows process" if platform.system() == "Windows" else "Necessary Linux app"
-            if not group["command"] and cmdline:
-                group["command"] = cmdline[:140]
         except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
             continue
 
@@ -359,11 +363,27 @@ async def dashboard_resources():
     for app in apps:
         app["cpu_percent"] = round(app["cpu_percent"], 1)
         app["memory_percent"] = round(app["memory_percent"], 1)
+        app["memory_mb"] = round(app["memory_mb"], 1)
+
     normal_apps = [app for app in apps if app["stoppable"]]
     necessary_apps = [app for app in apps if not app["stoppable"]]
-    normal_apps.sort(key=lambda p: (-(p["memory_percent"]), -(p["cpu_percent"])))
-    necessary_apps.sort(key=lambda p: (-(p["memory_percent"]), -(p["cpu_percent"])))
-    return {"ok": True, "roots": roots, "apps": normal_apps + necessary_apps}
+    normal_apps.sort(key=lambda p: (-(p["memory_mb"]), -(p["cpu_percent"])))
+    necessary_apps.sort(key=lambda p: (-(p["memory_mb"]), -(p["cpu_percent"])))
+
+    sorted_apps = normal_apps + necessary_apps
+
+    payload = {
+        "ok": True,
+        "roots": roots,
+        "apps": sorted_apps,
+        "total_apps": len(sorted_apps),
+        "stoppable_apps_count": len(normal_apps),
+        "necessary_apps_count": len(necessary_apps),
+    }
+
+    _dashboard_resources_cache["timestamp"] = now
+    _dashboard_resources_cache["payload"] = payload
+    return payload
 
 
 @router.get("/api/files/list")

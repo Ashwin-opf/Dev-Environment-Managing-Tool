@@ -7,10 +7,16 @@
   <title>PC Doctor — Intelligent System Repair</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" crossorigin href="/assets/index-7JUxShMM.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" crossorigin href="/assets/index-BZTodq7a.css">
 </head>
 <body>
+<!-- Wallpaper background layer -->
+<div id="app-wallpaper-layer"></div>
+
+<!-- Floating app shell -->
+<div class="app-shell" id="app-shell">
+
 <svg class="icon-sprite" aria-hidden="true">
   <!-- Gradient defs for logo glow stroke -->
   <defs>
@@ -72,6 +78,11 @@
     <button class="nav-item" data-view="logs" id="nav-logs">
       <svg class="nav-icon"><use href="#icon-list"></use></svg> Logs
     </button>
+    <button class="nav-item nav-control-center" data-view="control-center" id="nav-control-center">
+      <svg class="nav-icon"><use href="#icon-shield"></use></svg>
+      Control Center
+      <span class="cc-badge" id="cc-queue-badge" style="display:none">0</span>
+    </button>
   </nav>
 
   <div class="sidebar-footer">
@@ -91,8 +102,14 @@
 ════════════════════════════════════════ -->
 <div class="main-wrapper">
 
-  <!-- Top bar -->
-  <header class="topbar">
+  <!-- Top bar (drag region for floating window) -->
+  <header class="topbar" data-tauri-drag-region>
+    <!-- Custom window controls (macOS-style) -->
+    <div class="win-controls" id="win-controls">
+      <button class="win-btn win-close"  id="win-close"  title="Close"    onclick="winClose()"></button>
+      <button class="win-btn win-min"    id="win-min"    title="Minimize" onclick="winMinimize()"></button>
+      <button class="win-btn win-max"    id="win-max"    title="Maximize" onclick="winMaximize()"></button>
+    </div>
     <h1 class="topbar-title" id="view-title">Dashboard</h1>
     <div class="topbar-right">
       <div class="status-dot" id="status-dot" title="Backend status"></div>
@@ -108,71 +125,238 @@
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
         </svg>
       </button>
+
+      <!-- Theme Selector Dropdown -->
+      <div class="theme-selector-wrapper" title="Choose App Theme">
+        <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"></circle>
+          <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"></circle>
+          <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"></circle>
+          <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"></circle>
+          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.92 0 1.7-.71 1.7-1.63 0-.44-.18-.85-.46-1.16-.27-.3-.42-.71-.42-1.15 0-.92.78-1.66 1.7-1.66h2.48c2.95 0 5.34-2.39 5.34-5.34 0-4.97-4.63-9.06-10.34-9.06z"></path>
+        </svg>
+        <select id="theme-selector" class="theme-select" onchange="changeTheme(this.value)">
+          <option value="dark-glass">Dark Glass</option>
+          <option value="oled">OLED Pure Black</option>
+          <option value="aurora">Aurora Slate</option>
+          <option value="solarized">Solarized Navy</option>
+          <option value="light">Minimalist Light</option>
+        </select>
+      </div>
     </div>
   </header>
 
   <!-- ── DASHBOARD VIEW ── -->
   <section class="view active" id="view-dashboard">
-    <div class="resource-switch">
-      <button class="resource-tile active" id="dashboard-cpu-tile" onclick="showDashboardMode('cpu')">
-        <span>CPU</span>
-        <strong id="cpu-ring-val">0%</strong>
-        <small id="cpu-ring-detail">Loading...</small>
-      </button>
-      <button class="resource-tile" id="dashboard-ram-tile" onclick="showDashboardMode('ram')">
-        <span>RAM</span>
-        <strong id="ram-ring-val">0%</strong>
-        <small id="ram-ring-detail">Loading...</small>
-      </button>
-      <button class="resource-tile" id="dashboard-storage-tile" onclick="showDashboardMode('storage')">
-        <span>Storage</span>
-        <strong id="disk-ring-val">0%</strong>
-        <small id="disk-ring-detail">Loading...</small>
-      </button>
-    </div>
+    <!-- COMMON INVISIBLE STAGE: holds all floating cards, they move together -->
+    <div class="dashboard-glass-stage" id="dashboard-glass-stage">
 
-    <div class="dashboard-panel wide dashboard-mode active" id="dashboard-cpu-panel">
-      <div class="panel-head">
-        <h2>CPU Apps</h2>
-        <span>Apps sorted by CPU use</span>
+      <!-- Row 1: 4 Resource Tiles -->
+      <div class="resource-switch">
+        <button class="resource-tile card-cpu active" id="dashboard-cpu-tile" onclick="showDashboardMode('cpu')">
+        <div class="tile-header">
+          <span class="tile-title"><svg class="tile-icon"><use href="#icon-monitor"></use></svg> CPU</span>
+          <span class="tile-menu-dots">⋮</span>
+        </div>
+        <div class="tile-body">
+          <strong id="cpu-ring-val">18%</strong>
+          <div class="tile-gauge-col">
+            <svg class="ring-gauge-svg" viewBox="0 0 100 100">
+              <circle class="ring-bg" cx="50" cy="50" r="40" />
+              <circle class="ring-fill ring-cpu" id="cpu-svg-ring" cx="50" cy="50" r="40" style="stroke-dasharray: 251.2; stroke-dashoffset: 200;" />
+            </svg>
+          </div>
+        </div>
+        <small id="cpu-ring-detail" class="tile-detail">Utilization</small>
+      </button>
+
+      <button class="resource-tile card-ram" id="dashboard-ram-tile" onclick="showDashboardMode('ram')">
+        <div class="tile-header">
+          <span class="tile-title"><svg class="tile-icon"><use href="#icon-dashboard"></use></svg> RAM</span>
+          <span class="tile-menu-dots">⋮</span>
+        </div>
+        <div class="tile-body">
+          <strong id="ram-ring-val">52%</strong>
+          <div class="tile-gauge-col">
+            <svg class="ring-gauge-svg" viewBox="0 0 100 100">
+              <circle class="ring-bg" cx="50" cy="50" r="40" />
+              <circle class="ring-fill ring-ram" id="ram-svg-ring" cx="50" cy="50" r="40" style="stroke-dasharray: 251.2; stroke-dashoffset: 120;" />
+            </svg>
+          </div>
+        </div>
+        <small id="ram-ring-detail" class="tile-detail">8.3 / 15.7 GB</small>
+      </button>
+
+      <button class="resource-tile card-storage" id="dashboard-storage-tile" onclick="showDashboardMode('storage')">
+        <div class="tile-header">
+          <span class="tile-title"><svg class="tile-icon"><use href="#icon-folder"></use></svg> Storage</span>
+          <span class="tile-menu-dots">⋮</span>
+        </div>
+        <div class="tile-body">
+          <strong id="disk-ring-val">42%</strong>
+          <div class="tile-gauge-col">
+            <svg class="ring-gauge-svg" viewBox="0 0 100 100">
+              <circle class="ring-bg" cx="50" cy="50" r="40" />
+              <circle class="ring-fill ring-storage" id="disk-svg-ring" cx="50" cy="50" r="40" style="stroke-dasharray: 251.2; stroke-dashoffset: 145;" />
+            </svg>
+          </div>
+        </div>
+        <small id="disk-ring-detail" class="tile-detail">SSD</small>
+      </button>
+
+      <button class="resource-tile card-gpu" id="dashboard-gpu-tile" onclick="showDashboardMode('gpu')">
+        <div class="tile-header">
+          <span class="tile-title"><svg class="tile-icon"><use href="#icon-chart"></use></svg> GPU</span>
+          <span class="tile-menu-dots">⋮</span>
+        </div>
+        <div class="tile-body">
+          <strong id="gpu-ring-val">0%</strong>
+          <div class="tile-gauge-col">
+            <svg class="ring-gauge-svg" viewBox="0 0 100 100">
+              <circle class="ring-bg" cx="50" cy="50" r="40" />
+              <circle class="ring-fill ring-gpu" id="gpu-svg-ring" cx="50" cy="50" r="40" style="stroke-dasharray: 251.2; stroke-dashoffset: 251.2;" />
+            </svg>
+          </div>
+        </div>
+        <small id="gpu-ring-detail" class="tile-detail">GPU</small>
+      </button>
+    </div><!-- end .resource-switch -->
+
+    <!-- Row 2: App/Resource Panels (scrollable, separate card inside the stage) -->
+    <div class="dashboard-panel wide dashboard-mode app-list-glass-panel active" id="dashboard-cpu-panel">
+      <div class="panel-head app-list-header">
+        <div class="app-list-title-wrap">
+          <h2>TOP CPU CONSUMING APPS</h2>
+          <span class="app-list-sublabel">Sort by Usage · refreshes every second</span>
+        </div>
+        <div class="app-list-col-labels">
+          <span>PID</span>
+          <span>CPU</span>
+        </div>
       </div>
-      <div class="app-list" id="linux-cpu-app-list">
+      <div class="app-list app-list-scroll" id="linux-cpu-app-list">
         <div class="empty-row">Loading applications...</div>
       </div>
     </div>
 
-    <div class="dashboard-panel wide dashboard-mode" id="dashboard-ram-panel">
-      <div class="panel-head">
-        <h2>RAM Apps</h2>
-        <span>Apps sorted by memory use</span>
-        <div style="display: flex; gap: 0.5rem;">
-          <button class="quiet-btn" onclick="boostRam()">Boost RAM</button>
+    <div class="dashboard-panel wide dashboard-mode app-list-glass-panel" id="dashboard-ram-panel">
+      <div class="panel-head app-list-header">
+        <div class="app-list-title-wrap">
+          <h2>TOP RAM CONSUMING APPS</h2>
+          <span class="app-list-sublabel">Sort by Memory Usage · refreshes every second</span>
+        </div>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <button class="quiet-btn" style="background: rgba(10, 132, 255, 0.15); border: 1px solid rgba(10, 132, 255, 0.4); color: var(--apple-blue);" onclick="boostRam()">Boost RAM</button>
+          <div class="app-list-col-labels">
+            <span>PID</span>
+            <span>RAM</span>
+          </div>
         </div>
       </div>
-      <div class="app-list" id="linux-app-list">
+      <div class="app-list app-list-scroll" id="linux-app-list">
         <div class="empty-row">Loading applications...</div>
       </div>
     </div>
 
-    <div class="dashboard-panel wide dashboard-mode" id="dashboard-storage-panel">
-        <div class="panel-head">
-          <h2>File Browser</h2>
-          <span id="storage-mode-label">Home folders are writable. OS folders are protected.</span>
+    <div class="dashboard-panel wide dashboard-mode app-list-glass-panel" id="dashboard-storage-panel">
+        <div class="panel-head app-list-header">
+          <div class="app-list-title-wrap">
+            <h2>STORAGE FILE MANAGER</h2>
+            <span id="storage-mode-label" class="app-list-sublabel">Home files are editable/deletable. System OS files are protected.</span>
+          </div>
+          <div class="file-actions" id="file-actions" style="display:flex;gap:0.5rem;align-items:center;">
+            <button class="quiet-btn" onclick="createCurrentFolder()">+ New Folder</button>
+            <button class="quiet-btn" onclick="createCurrentFile()">+ New File</button>
+            <span id="file-write-state" style="font-size:0.78rem;padding:0.2rem 0.6rem;background:rgba(48,209,88,0.15);border:1px solid rgba(48,209,88,0.4);color:#30d158;border-radius:6px;">Home Storage</span>
+          </div>
         </div>
-        <div class="folder-tabs" id="folder-tabs"></div>
-        <div class="folder-path-row">
-          <button class="quiet-btn" id="folder-up-btn" onclick="goFolderUp()">Up</button>
-          <code id="folder-current-path">Loading...</code>
+        <div class="folder-tabs" id="folder-tabs" style="margin-bottom:0.75rem;"></div>
+        <div class="folder-path-row" style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.85rem;">
+          <button class="quiet-btn" id="folder-up-btn" onclick="goFolderUp()">↑ Up</button>
+          <code id="folder-current-path" style="background:rgba(0,0,0,0.3);padding:0.35rem 0.75rem;border-radius:8px;border:1px solid rgba(255,255,255,0.08);color:var(--text-1);font-size:0.85rem;">Loading...</code>
         </div>
-        <div class="file-actions" id="file-actions">
-          <button class="quiet-btn" onclick="createCurrentFolder()">New Folder</button>
-          <button class="quiet-btn" onclick="createCurrentFile()">New File</button>
-          <span id="file-write-state">Protected</span>
-        </div>
-        <div class="file-list" id="file-list">Loading folders...</div>
+        <div class="file-list app-list-scroll" id="file-list">Loading folders...</div>
     </div>
 
-    <!-- Self-healing / adaptation panels removed to keep dashboard focused on RAM and Disk only -->
+    <!-- GPU Metrics Panel -->
+    <div class="dashboard-panel wide dashboard-mode app-list-glass-panel" id="dashboard-gpu-panel">
+      <div class="panel-head app-list-header">
+        <div class="app-list-title-wrap">
+          <h2>GPU UTILISATION &amp; VRAM</h2>
+          <span id="gpu-panel-subtitle" class="app-list-sublabel">Real-time GPU hardware utilisation &amp; VRAM allocation · refreshes every second</span>
+        </div>
+      </div>
+      <div id="gpu-metrics-cards" style="display:grid;gap:1rem;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));padding:0 0.25rem">
+        <div class="empty-row">Detecting GPU...</div>
+      </div>
+      <!-- Sparkline trend chart -->
+      <div class="metrics-trend-block" style="margin-top:1.5rem">
+        <div class="trend-header">
+          <span class="trend-label">GPU Utilisation Trend (last 30 samples)</span>
+          <span class="trend-val" id="gpu-trend-val">—</span>
+        </div>
+        <canvas id="gpu-trend-canvas" height="64" style="width:100%;border-radius:8px;background:rgba(0,0,0,0.18)"></canvas>
+      </div>
+      <!-- CPU core breakdown inside GPU panel for cross-reference -->
+      <div class="metrics-trend-block" style="margin-top:1.5rem">
+        <div class="trend-header">
+          <span class="trend-label">CPU Utilisation Trend (last 30 samples)</span>
+          <span class="trend-val" id="cpu-trend-val-gpu">—</span>
+        </div>
+        <canvas id="cpu-trend-canvas" height="64" style="width:100%;border-radius:8px;background:rgba(0,0,0,0.18)"></canvas>
+      </div>
+    </div>
+
+    </div><!-- end .dashboard-glass-stage -->
+  </section>
+
+  <!-- ── CONTROL CENTER VIEW ── -->
+  <section class="view" id="view-control-center">
+    <div class="view-header">
+      <div class="view-title-block">
+        <h2 class="view-title-text" style="color:var(--apple-blue);text-shadow:0 0 15px rgba(90,200,250,0.4);display:flex;align-items:center;gap:0.6rem;margin:0 0 0.5rem 0;font-size:1.6rem;font-weight:800;letter-spacing:-0.02em">
+          <svg class="inline-title-icon" style="color:var(--apple-blue);filter:drop-shadow(0 0 8px rgba(90,200,250,0.6));width:1.25rem;height:1.25rem"><use href="#icon-shield"></use></svg>
+          Control Center
+        </h2>
+        <p class="feature-desc" style="margin:0;color:var(--text-2);font-size:0.9rem">Unified approval queue for all pending high-risk and sensitive actions. Review, approve, or reject before anything executes.</p>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem">
+        <select id="cc-filter-status" onchange="loadControlCenter()" style="background:rgba(0,0,0,0.3);color:var(--text-1);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.45rem 0.85rem;font-size:0.85rem">
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="">All</option>
+        </select>
+        <select id="cc-filter-risk" onchange="loadControlCenter()" style="background:rgba(0,0,0,0.3);color:var(--text-1);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.45rem 0.85rem;font-size:0.85rem">
+          <option value="">All Risk Tiers</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+        <button class="quiet-btn" onclick="loadControlCenter()">Refresh</button>
+      </div>
+    </div>
+    <div id="control-center-queue" class="results-list" style="margin-top:1rem">
+      <div class="empty-row">Loading approval queue...</div>
+    </div>
+
+    <!-- Audit Trail Section -->
+    <div style="margin-top:2rem">
+      <div class="panel-head">
+        <h2>Audit Trail</h2>
+        <input type="text" id="cc-audit-search" class="search-input" placeholder="Search audit trail..." oninput="loadAuditTrail()" style="max-width:300px;margin:0;padding:0.45rem 0.85rem" />
+      </div>
+      <div id="control-center-audit" class="results-list"></div>
+    </div>
+
+    <!-- Snapshots Section -->
+    <div style="margin-top:2rem">
+      <div class="panel-head">
+        <h2>System Snapshots</h2>
+        <span>Rollback points created before medium/high-risk actions</span>
+      </div>
+      <div id="control-center-snapshots" class="results-list"></div>
+    </div>
   </section>
 
   <!-- ── SCAN VIEW ── -->
@@ -237,39 +421,75 @@
     </div>
   </section>
 
-  <!-- ── DEV TOOLS VIEW ── -->
+  <!-- ── DEV TOOLS STORE VIEW ── -->
   <section class="view" id="view-devtools">
-    <div class="view-header">
-      <div class="view-title-block">
-        <h2 class="view-title-text" style="color: var(--apple-purple); text-shadow: 0 0 15px rgba(191, 90, 242, 0.4); display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.5rem 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;">
-          <svg class="inline-title-icon" style="color: var(--apple-purple); filter: drop-shadow(0 0 8px rgba(191,90,242,0.6)); width: 1.25rem; height: 1.25rem;"><use href="#icon-code"></use></svg>
-          Dev Tools
-        </h2>
-        <p class="feature-desc" style="margin: 0; color: var(--text-2); font-size: 0.9rem;">Suggests development-related tools and utilities. Live status of installed developer tools — missing tools can be fixed instantly.</p>
+    <!-- Store Header -->
+    <div class="store-header-bar">
+      <div class="store-header-info">
+        <div class="store-kicker">
+          <span class="store-kicker-dot"></span>
+          DEV TOOLS STORE
+        </div>
+        <h1 class="store-main-title">Developer Tools Store</h1>
+        <p class="store-subtitle">Discover, install, and manage developer tools, runtimes, and utilities from one place.</p>
+      </div>
+
+      <!-- Search Experience -->
+      <div class="store-search-container">
+        <div class="store-search-box">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="devtools-search" class="store-search-input" placeholder="Search developer tools &amp; GUI apps..." oninput="searchDevTools()" autocomplete="off" />
+          <button id="devtools-search-clear" class="store-search-clear hidden" onclick="clearDevToolsSearch()" title="Clear search">x</button>
+          <span class="store-search-kbd">Ctrl K</span>
+        </div>
       </div>
     </div>
 
-    <!-- Real-time search for developer tools -->
-    <div style="margin-top: 1.2rem; margin-bottom: 1.2rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
-      <input type="text" id="devtools-search" class="search-input" placeholder="Search developer tools &amp; GUI apps natively supported on your OS..." oninput="searchDevTools()" style="flex: 1 1 300px; margin: 0; padding: 0.75rem 1rem; border-radius: var(--radius); border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.25); color: var(--text-1);" />
-    </div>
-
-    <div class="card-grid" id="devtools-grid">
-      <!-- Populated by JS with live status badges -->
-    </div>
-
-    <!-- AI DevOps Recommendations Section -->
-    <div style="margin-top: 3.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
-      <div>
-        <h2 style="font-size: 1.4rem; color: var(--accent-a); margin: 0; display: flex; align-items: center; gap: .5rem;">
-          <svg class="inline-title-icon"><use href="#icon-brain"></use></svg> AI DevOps Suggestions
-        </h2>
-        <p style="color: var(--text-2); font-size: .85rem; margin-top: .2rem;">Personalized packages suggested dynamically based on your currently installed stack.</p>
+    <!-- Category Navigation Bar -->
+    <div class="store-category-bar">
+      <div class="store-category-scroll" id="devtools-category-nav">
+        <button class="category-pill active" onclick="filterDevToolsCategory('all')">All</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('popular')">Popular</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('trending')">Trending</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('alltime')">All-Time Best</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('hot2026')">2026 Hot</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('offline')">Offline</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('languages')">Languages</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('frameworks')">Frameworks</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('databases')">Databases</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('devops')">DevOps</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('ides')">IDEs &amp; Editors</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('vcs')">Git &amp; Version Control</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('cli')">CLI Tools</button>
+        <button class="category-pill" onclick="filterDevToolsCategory('testing')">Testing &amp; Security</button>
       </div>
-      <button class="primary-btn" style="padding: .45rem 1rem; font-size: .8rem; background: linear-gradient(135deg, rgba(99,102,241,.2), rgba(139,92,246,.25)); border: 1px solid rgba(139,92,246,.4);" onclick="loadAppSuggestions(true)">Refresh Suggestions</button>
     </div>
-    <div class="card-grid" id="devtools-suggestions">
-      <!-- Populated dynamically with smart app recommendations -->
+
+    <!-- Hero Spotlight Section -->
+    <div id="devtools-hero-container" class="store-hero-container">
+      <!-- Populated dynamically by JS -->
+    </div>
+
+    <!-- Search / Filter Query Header -->
+    <div id="devtools-search-status" class="store-search-status hidden">
+      <div class="search-status-text">
+        <h2 id="devtools-search-title" class="search-status-title">Search Results</h2>
+        <span id="devtools-search-count" class="search-status-count">0 tools</span>
+      </div>
+      <button class="quiet-btn" onclick="clearDevToolsSearch()" style="font-size: 0.8rem; padding: 0.35rem 0.8rem;">Show All Store Sections</button>
+    </div>
+
+    <!-- Store Sections Wrapper -->
+    <div id="devtools-store-sections" class="store-sections-wrapper">
+      <!-- Populated dynamically by JS (Popular, Trending, 2026 Hot, Offline, Categories, AI DevOps) -->
+    </div>
+
+    <!-- Main Tool Grid (For Search Results and Category Filtered Grids) -->
+    <div class="card-grid store-grid hidden" id="devtools-grid">
+      <!-- Populated by JS -->
     </div>
   </section>
 
@@ -594,7 +814,7 @@
       <!-- Educational explanation injected by JS -->
     </div>
 
-    <!-- Real-time Progress Bar & Status Steps Checklist -->
+    <!-- Real-time Progress Bar & Status Steps Checklist & Live Stream Terminal -->
     <div class="modal-progress-container hidden" id="modal-progress-container">
       <div class="modal-progress-track">
         <div class="modal-progress-fill" id="modal-progress-fill"></div>
@@ -602,6 +822,9 @@
       <div class="modal-progress-percentage" id="modal-progress-percentage">0%</div>
       <div class="modal-status-checklist" id="modal-status-checklist">
         <!-- Injected status steps -->
+      </div>
+      <div class="modal-terminal-log-wrapper" id="modal-terminal-wrapper" style="margin-top:0.75rem;max-height:160px;overflow-y:auto;background:rgba(0,0,0,0.65);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.6rem;font-family:var(--mono);font-size:0.75rem;color:#79f2c0;white-space:pre-wrap;word-break:break-all;">
+        <div id="modal-terminal-stream">Waiting for command output...</div>
       </div>
     </div>
 
@@ -626,6 +849,18 @@
     <div class="modal-footer" style="margin-top:1.4rem">
       <button class="btn-cancel" onclick="closeAgentModalBtn()">Skip</button>
       <button class="btn-run" id="agent-modal-run-btn" onclick="confirmAgentCommand()">Run Command</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     DEV TOOLS STORE PRODUCT DETAILS MODAL
+════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-devtools-product" onclick="closeDevToolProductModal(event)">
+  <div class="modal-card glass store-product-modal" id="devtools-product-card">
+    <button class="product-modal-close" onclick="closeDevToolProductModalBtn()" title="Close details">x</button>
+    <div id="devtools-product-content">
+      <!-- Injected by JS -->
     </div>
   </div>
 </div>
@@ -697,10 +932,33 @@
   </div>
 </div>
 
+</div><!-- /.app-shell -->
+
 <!-- ── GSAP + ScrollTrigger (local bundle — no CDN dependency) ── -->
 <script src="gsap.min.js"></script>
 <script src="ScrollTrigger.min.js"></script>
 <script src="main.js"></script>
 <script src="animations.js"></script>
+<!-- ── Automatic Live Auto-Reload when Code Updates ── -->
+<script>
+  (function() {
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      let lastCheckSig = null;
+      setInterval(async () => {
+        try {
+          const r = await fetch('/main.js', { method: 'HEAD', cache: 'no-store' });
+          const sig = (r.headers.get('etag') || '') + '|' + (r.headers.get('last-modified') || '') + '|' + (r.headers.get('content-length') || '');
+          if (lastCheckSig !== null && sig && lastCheckSig !== sig) {
+            console.log('[PC Doctor Auto-Update] Code update detected! Live reloading app...');
+            location.reload();
+          }
+          if (sig) lastCheckSig = sig;
+        } catch (_) {}
+      }, 1000);
+    }
+  })();
+</script>
 </body>
 </html>
+
+

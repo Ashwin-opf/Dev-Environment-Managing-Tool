@@ -81,17 +81,46 @@ fn find_python(backend_dir: &PathBuf) -> PathBuf {
 // `tauri dev` (exe is deep inside target/debug) or a packaged binary.
 
 fn find_backend_dir() -> Option<PathBuf> {
-    let mut dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    for _ in 0..8 {
-        let candidate = dir.join("backend");
+    // 1. Check current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidate = cwd.join("backend");
         if candidate.join("main.py").exists() {
             return Some(candidate);
         }
-        match dir.parent() {
-            Some(p) => dir = p.to_path_buf(),
-            None    => break,
+        if cwd.join("main.py").exists() {
+            return Some(cwd);
         }
     }
+
+    // 2. Check parents of executable location
+    if let Ok(exe_path) = std::env::current_exe() {
+        let mut dir = exe_path.parent().map(|p| p.to_path_buf());
+        for _ in 0..8 {
+            if let Some(ref d) = dir {
+                let candidate = d.join("backend");
+                if candidate.join("main.py").exists() {
+                    return Some(candidate);
+                }
+                dir = d.parent().map(|p| p.to_path_buf());
+            } else {
+                break;
+            }
+        }
+    }
+
+    // 3. Fallback: check project root path
+    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let fallback = PathBuf::from(home)
+            .join(".gemini")
+            .join("antigravity")
+            .join("scratch")
+            .join("pc-doc")
+            .join("backend");
+        if fallback.join("main.py").exists() {
+            return Some(fallback);
+        }
+    }
+
     None
 }
 
@@ -102,7 +131,7 @@ fn find_backend_dir() -> Option<PathBuf> {
 
 async fn check_health() -> bool {
     let client = match reqwest::Client::builder()
-        .timeout(Duration::from_millis(800))
+        .timeout(Duration::from_millis(1500))
         .build()
     {
         Ok(c)  => c,
@@ -222,27 +251,14 @@ async fn kill_orphaned_on_port(port: u16) {
 
     #[cfg(windows)]
     {
-        // netstat -ano lists: Proto  Local  Foreign  State  PID
-        if let Ok(out) = Command::new("netstat")
-            .args(["-ano"])
-            .output()
-            .await
-        {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            for line in stdout.lines() {
-                if !line.contains(&format!(":{port}")) || !line.contains("LISTENING") {
-                    continue;
-                }
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if let Some(pid_str) = parts.last() {
-                    let _ = Command::new("taskkill")
-                        .args(["/F", "/PID", pid_str])
-                        .status()
-                        .await;
-                }
-            }
-            sleep(Duration::from_millis(500)).await;
-        }
+        let ps_cmd = format!(
+            "Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}"
+        );
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps_cmd])
+            .status()
+            .await;
+        sleep(Duration::from_millis(500)).await;
     }
 }
 

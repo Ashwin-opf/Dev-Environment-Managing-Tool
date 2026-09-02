@@ -128,6 +128,13 @@ info('Installing Node app dependencies...');
 const npmCmd = isWin ? 'npm.cmd' : 'npm';
 run(npmCmd, ['install'], { cwd: ROOT_DIR, shell: isWin });
 
+// ── Create / Update Desktop Shortcut ───────────────────────────────────────
+if (fs.existsSync(path.join(ROOT_DIR, 'scripts', 'create_shortcut.js'))) {
+    info('Creating / updating Desktop shortcut...');
+    run('node', [path.join(ROOT_DIR, 'scripts', 'create_shortcut.js')]);
+}
+
 console.log('');
 info('Setup complete. Run: npm start');
 console.log('');
+

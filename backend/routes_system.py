@@ -6,7 +6,8 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Optional, Any
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import psutil
 
@@ -651,6 +652,46 @@ async def execute_command(req: ExecuteRequest):
     }
 
 
+@router.post("/api/execute-stream")
+async def execute_command_stream(req: ExecuteRequest):
+    """Execute a validated command and stream real-time output and download progress via SSE."""
+    action_key = (req.action_key or "").strip() or None
+    blocked, reason = safety.validate(req.command, req.risk, action_key=action_key)
+    if blocked:
+        investigation = safety.explain_block(req.command, req.risk, action_key=action_key)
+        log_action("BLOCKED", req.command, reason, friendly_summary=req.title or "Command blocked")
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": f"Blocked: {reason}",
+                "command": req.command,
+                "reason": reason,
+                "recommended_fix": investigation.get("recommended_fix", ""),
+            },
+        )
+
+    cmd_lower = req.command.lower()
+    
+    def event_stream():
+        yield f"data: {json.dumps({'type': 'start', 'command': req.command, 'title': req.title})}\n\n"
+        full_stdout = ""
+        full_stderr = ""
+        rc = 0
+        for event in engine.stream_run(req.command, trigger_shce=True, timeout=1800):
+            if event["type"] == "done":
+                full_stdout = event.get("stdout", "")
+                full_stderr = event.get("stderr", "")
+                rc = event.get("returncode", 0)
+            yield f"data: {json.dumps(event)}\n\n"
+
+        if rc == 0:
+            log_action("EXECUTE", req.command, req.purpose, friendly_summary=req.title or "Command completed successfully")
+            if any(token in cmd_lower for token in ("apt ", "dnf ", "pacman ", "zypper ", "winget ", "brew ")):
+                record_history("execute", req.title or req.purpose or "command", req.command, "success", req.title or "Completed")
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.get("/api/sysinfo")
 async def sysinfo():
     mem = psutil.virtual_memory()
@@ -671,6 +712,81 @@ async def sysinfo():
         "disk_used_gb": round(disk.used / 1024**3, 2),
         "disk_total_gb": round(disk.total / 1024**3, 2),
         "architecture": platform.machine(),
+    }
+
+
+# ─── Real-time CPU / GPU metrics with trend history ──────────────────────────
+# Rolling 30-point trend queues (shared across requests in this process)
+import collections
+_CPU_TREND: collections.deque = collections.deque(maxlen=30)
+_GPU_TREND: collections.deque = collections.deque(maxlen=30)
+_RAM_TREND: collections.deque = collections.deque(maxlen=30)
+
+
+@router.get("/api/system/metrics")
+async def system_metrics():
+    """
+    Real-time CPU (per-core + total), GPU utilisation, VRAM, temperature,
+    RAM, and 30-point historical trend queues.
+    Used by the Dashboard CPU/GPU cards and the risk engine load threshold.
+    """
+    import time as _time
+
+    # ── CPU ──────────────────────────────────────────────────────────────────
+    cpu_total = psutil.cpu_percent(interval=None)
+    cpu_per_core = psutil.cpu_percent(interval=None, percpu=True)
+    cpu_freq = psutil.cpu_freq()
+    cpu_freq_mhz = round(cpu_freq.current, 0) if cpu_freq else None
+
+    # ── RAM ──────────────────────────────────────────────────────────────────
+    mem = psutil.virtual_memory()
+    ram_pct = mem.percent
+
+    # ── GPU ──────────────────────────────────────────────────────────────────
+    gpu_list = []
+    try:
+        gpu_raw = platform_gpu_usage_info()
+        items = gpu_raw.get("gpus", []) if isinstance(gpu_raw, dict) else (gpu_raw if isinstance(gpu_raw, list) else [])
+        for g in items:
+            util = g.get("usage_pct") if g.get("usage_pct") is not None else (g.get("utilization") or g.get("usage_percent") or 0)
+            gpu_list.append({
+                "name":          g.get("name", "GPU"),
+                "utilization":   util,
+                "usage_pct":     util,
+                "vram_used_mb":  g.get("vram_used_mb") or g.get("mem_used_mb") or 0,
+                "vram_total_mb": g.get("vram_total_mb") or g.get("mem_total_mb") or 0,
+                "temperature":   g.get("temperature") or g.get("temperature_c") or None,
+                "kind":          g.get("kind", ""),
+            })
+    except Exception:
+        pass
+
+    gpu_utilization = gpu_list[0]["utilization"] if gpu_list else 0
+
+    # ── Update trend queues ───────────────────────────────────────────────────
+    ts = round(_time.time() * 1000)  # epoch ms for chart x-axis
+    _CPU_TREND.append({"t": ts, "v": cpu_total})
+    _GPU_TREND.append({"t": ts, "v": gpu_utilization})
+    _RAM_TREND.append({"t": ts, "v": ram_pct})
+
+    return {
+        "ok": True,
+        "cpu": {
+            "total_pct":   cpu_total,
+            "per_core_pct": cpu_per_core,
+            "cores":        psutil.cpu_count(logical=True),
+            "physical_cores": psutil.cpu_count(logical=False),
+            "freq_mhz":     cpu_freq_mhz,
+            "trend":        list(_CPU_TREND),
+        },
+        "gpu": gpu_list,
+        "gpu_trend": list(_GPU_TREND),
+        "ram": {
+            "pct":       ram_pct,
+            "used_gb":   round((mem.total - mem.available) / 1024**3, 2),
+            "total_gb":  round(mem.total / 1024**3, 2),
+            "trend":     list(_RAM_TREND),
+        },
     }
 
 
@@ -1367,19 +1483,30 @@ def extract_dynamic_app_command(app_name: str, gui: bool) -> tuple[str, str, str
         print(f"Error extracting recipe for '{app_name}': {exc}")
         traceback.print_exc()
 
-    # 4. Standard Default Fallback
+    # 4. Dynamic package discovery fallback — no hardcoded IDs
+    try:
+        from pkg_discovery import search_and_auto_pick
+        result = search_and_auto_pick(app_name)
+        if result:
+            cmd, pkg_id, manager = result
+            explanation = f"Dynamically discovered '{pkg_id}' via {manager} and generated install command."
+            return cmd, explanation, "Medium"
+    except Exception as _disc_err:
+        print(f"pkg_discovery fallback failed for '{app_name}': {_disc_err}")
+
+    # 5. Generic OS-level last resort (no ID knowledge needed)
     app_pkg = app_clean.replace(" ", "-").replace("/", "-").strip("-")
     if is_linux:
         gui_suffix = " --install-suggests" if gui else ""
         cmd = f"sudo apt-get update && sudo apt-get install -y {app_pkg}{gui_suffix}"
-        explanation = f"Installs {app_name} package using standard Linux apt package manager."
+        explanation = f"Installs {app_name} using the system apt package manager."
     elif is_macos:
         cmd = f"brew install {app_pkg}"
-        explanation = f"Installs {app_name} package using macOS Homebrew package manager."
+        explanation = f"Installs {app_name} using Homebrew."
     else:
-        cmd = f"winget install {app_pkg}"
-        explanation = f"Installs {app_name} package using Windows Package Manager."
-        
+        cmd = f"winget search \"{app_name}\" --accept-source-agreements"
+        explanation = f"Search winget for '{app_name}' — no verified ID found automatically."
+
     return cmd, explanation, "Medium"
 
 
@@ -1420,11 +1547,302 @@ async def get_managed_devtools():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/devtools/update-stream")
+async def devtools_update_stream(app_id: str = "", request: Request = None):
+    """
+    Server-Sent Events (SSE) endpoint that streams real-time update progress
+    for a managed app. Yields JSON events with 'phase' and 'pct' fields,
+    mimicking Play Store-style download progress.
+
+    Phases: fetching (0-30%) → installing (30-80%) → verifying (80-95%) → done (100%)
+
+    Client usage:
+        const es = new EventSource(`/api/devtools/update-stream?app_id=git`);
+        es.onmessage = e => { const d = JSON.parse(e.data); ... };
+    """
+    import asyncio
+    import subprocess
+    import sys
+    import json as _json
+
+    if not app_id:
+        raise HTTPException(status_code=400, detail="app_id is required")
+
+    try:
+        from devtools_manager import devtools_manager
+        app = devtools_manager.get_managed_app(app_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not app:
+        raise HTTPException(status_code=404, detail=f"App '{app_id}' not found in managed apps")
+
+    update_command = app.get("update_command", "").strip()
+    if not update_command:
+        raise HTTPException(status_code=400, detail=f"No update command defined for '{app_id}'")
+
+    async def _stream_update():
+        """Async generator that yields SSE-formatted JSON progress events."""
+
+        def _sse(data: dict) -> str:
+            return f"data: {_json.dumps(data)}\n\n"
+
+        try:
+            # Phase 1: fetching (0 → 30%)
+            yield _sse({"phase": "fetching", "pct": 0, "message": "Preparing update…"})
+            await asyncio.sleep(0.3)
+            yield _sse({"phase": "fetching", "pct": 10, "message": "Fetching package metadata…"})
+
+            # Launch the update process
+            proc = await asyncio.create_subprocess_shell(
+                update_command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
+            )
+
+            yield _sse({"phase": "fetching", "pct": 20, "message": "Downloading packages…"})
+
+            # Phase 2: installing — read lines and increment progress 30→80%
+            install_pct = 30
+            lines_seen = 0
+            stdout_lines = []
+
+            while True:
+                # Check if client disconnected
+                if request and await request.is_disconnected():
+                    proc.kill()
+                    return
+
+                try:
+                    line_bytes = await asyncio.wait_for(proc.stdout.readline(), timeout=60.0)
+                except asyncio.TimeoutError:
+                    break
+
+                if not line_bytes:
+                    break
+
+                line = line_bytes.decode("utf-8", errors="replace").rstrip()
+                stdout_lines.append(line)
+                lines_seen += 1
+
+                # Advance install progress based on output lines (30-80%)
+                if install_pct < 80:
+                    install_pct = min(80, 30 + lines_seen * 3)
+
+                phase = "installing"
+                msg = line if line else "Installing…"
+                # Trim long messages for the UI
+                if len(msg) > 80:
+                    msg = msg[:77] + "…"
+
+                yield _sse({"phase": phase, "pct": install_pct, "message": msg})
+
+            # Wait for process to finish (with timeout)
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=10.0)
+            except asyncio.TimeoutError:
+                proc.kill()
+
+            rc = proc.returncode if proc.returncode is not None else -1
+
+            if rc != 0:
+                # Error path
+                err_detail = "\n".join(stdout_lines[-5:]) if stdout_lines else "Update failed"
+                if len(err_detail) > 200:
+                    err_detail = err_detail[-200:]
+                yield _sse({
+                    "phase": "error",
+                    "pct": install_pct,
+                    "message": err_detail,
+                    "ok": False,
+                    "returncode": rc,
+                })
+                return
+
+            # Phase 3: verifying (80 → 95%)
+            yield _sse({"phase": "verifying", "pct": 85, "message": "Verifying installation…"})
+            await asyncio.sleep(0.4)
+            yield _sse({"phase": "verifying", "pct": 92, "message": "Checking package integrity…"})
+            await asyncio.sleep(0.3)
+
+            # Phase 4: done (100%)
+            yield _sse({
+                "phase": "done",
+                "pct": 100,
+                "message": "Update complete!",
+                "ok": True,
+            })
+
+        except Exception as exc:
+            yield _sse({
+                "phase": "error",
+                "pct": 0,
+                "message": str(exc),
+                "ok": False,
+            })
+
+    return StreamingResponse(
+        _stream_update(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+class UninstallRequest(BaseModel):
+    app_id: str
+    confirm: bool = False
+
+
+@router.post("/api/devtools/uninstall")
+async def devtools_uninstall_app(req: UninstallRequest):
+    """
+    Uninstall a managed app by running its stored uninstall command.
+    Removes the app from the managed apps list on success.
+    Requires confirm=True to guard against accidental calls.
+    """
+    import subprocess as _sp
+
+    if not req.app_id:
+        raise HTTPException(status_code=400, detail="app_id is required")
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Set confirm=true to proceed with uninstall")
+
+    try:
+        from devtools_manager import devtools_manager
+        app = devtools_manager.get_managed_app(req.app_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if not app:
+        raise HTTPException(status_code=404, detail=f"App '{req.app_id}' not found in managed apps")
+
+    uninstall_cmd = app.get("uninstall_command", "").strip()
+    if not uninstall_cmd:
+        raise HTTPException(status_code=400, detail=f"No uninstall command defined for '{req.app_id}'")
+
+    try:
+        result = _sp.run(
+            uninstall_cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
+        )
+        ok = result.returncode == 0
+    except _sp.TimeoutExpired:
+        return {"ok": False, "error": "Uninstall command timed out (120s)"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+    if ok:
+        # Remove from managed list on success
+        try:
+            from devtools_manager import devtools_manager
+            devtools_manager.remove_managed_app(req.app_id)
+        except Exception:
+            pass
+        log_action("UNINSTALL", uninstall_cmd, f"Uninstalled {app.get('name', req.app_id)} via managed apps.")
+
+    return {
+        "ok": ok,
+        "app_id": req.app_id,
+        "name": app.get("name", req.app_id),
+        "returncode": result.returncode,
+        "stdout": result.stdout[-500:] if result.stdout else "",
+        "stderr": result.stderr[-500:] if result.stderr else "",
+    }
+
+
+@router.post("/api/devtools/search-packages")
+async def devtools_search_packages(body: dict = Body(default={})):
+    """
+    Dynamic package search across all available package managers.
+    Replaces every hardcoded ID map — the caller supplies only the
+    human-readable app name; we discover the real package ID live.
+    """
+    query = (body.get("query") or body.get("app") or "").strip()
+    manager = (body.get("manager") or "auto").strip().lower()
+    if not query:
+        raise HTTPException(status_code=400, detail="'query' is required.")
+    try:
+        from pkg_discovery import search_packages
+        results = search_packages(query, manager=manager,
+                                  include_npm=True, include_pypi=True)
+        return {
+            "ok": True,
+            "query": query,
+            "manager": manager,
+            "count": len(results),
+            "results": [
+                {
+                    "id":          r.id,
+                    "name":        r.name,
+                    "version":     r.version,
+                    "source":      r.source,
+                    "manager":     r.manager,
+                    "description": r.description,
+                    "publisher":   r.publisher,
+                    "match_score": r.match_score,
+                }
+                for r in results
+            ],
+        }
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/api/devtools/package-details")
+async def devtools_package_details(body: dict = Body(default={})):
+    """
+    Fetch full metadata + verified install command for a confirmed package ID.
+    """
+    pkg_id  = (body.get("id") or "").strip()
+    manager = (body.get("manager") or "").strip().lower()
+    if not pkg_id or not manager:
+        raise HTTPException(status_code=400, detail="'id' and 'manager' are required.")
+    try:
+        from pkg_discovery import get_package_details
+        details = get_package_details(pkg_id, manager)
+        if not details:
+            raise HTTPException(status_code=404,
+                                detail=f"No details found for '{pkg_id}' via {manager}.")
+        return {
+            "ok":          True,
+            "id":          details.id,
+            "name":        details.name,
+            "description": details.description,
+            "publisher":   details.publisher,
+            "version":     details.version,
+            "url":         details.url,
+            "license":     details.license,
+            "manager":     details.manager,
+            "source":      details.source,
+            "install_cmd": details.install_cmd,
+            "genre":       details.genre,
+            "classic":     getattr(details, "classic", False),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/api/devtools/uninstall-cmd")
 async def get_uninstall_command(tool: str = ""):
     """
     Detect HOW a tool is installed and return the correct uninstall command.
     Prevents 'no such directory/package' errors from wrong uninstall method.
+    No hardcoded ID maps — probes the live filesystem and package DBs.
     """
     import shutil, subprocess
     from pathlib import Path
@@ -1434,48 +1852,6 @@ async def get_uninstall_command(tool: str = ""):
 
     tool_lower = tool.lower().strip()
     os_name = platform.system()
-
-    # Flatpak ID map
-    FLATPAK_IDS = {
-        "vs code": "com.visualstudio.code",
-        "visual studio code": "com.visualstudio.code",
-        "code": "com.visualstudio.code",
-        "android studio": "com.google.AndroidStudio",
-        "pycharm": "com.jetbrains.PyCharm-Community",
-        "postman": "com.getpostman.Postman",
-        "dbeaver ce": "io.dbeaver.DBeaverCommunity",
-        "slack": "com.slack.Slack",
-        "brave": "com.brave.Browser",
-        "chrome": "com.google.Chrome",
-        "firefox": "org.mozilla.firefox",
-        "sublime": "com.sublimetext.three",
-    }
-
-    # Snap package name map
-    SNAP_NAMES = {
-        "vs code": "code",
-        "visual studio code": "code",
-        "pycharm": "pycharm-community",
-        "android studio": "android-studio",
-        "postman": "postman",
-        "dbeaver ce": "dbeaver-ce",
-        "slack": "slack",
-        "sublime": "sublime-text",
-        "firefox": "firefox",
-    }
-
-    # APT package name map (display name → real deb package)
-    APT_PKG_MAP = {
-        "go": "golang-go",
-        "node.js": "nodejs",
-        "python": "python3",
-        "java": "default-jre default-jdk",
-        "vs code": "code",
-        "visual studio code": "code",
-        "github cli": "gh",
-        "neovim": "neovim",
-        "android studio": "android-studio",
-    }
 
     def _flatpak_installed(app_id: str) -> bool:
         try:
@@ -1510,46 +1886,211 @@ async def get_uninstall_command(tool: str = ""):
     if os_name != "Linux":
         return {"ok": True, "command": None, "method": "unknown"}
 
-    # 1. Check Flatpak first
-    flatpak_id = FLATPAK_IDS.get(tool_lower)
-    if flatpak_id and _flatpak_installed(flatpak_id):
-        return {
-            "ok": True,
-            "command": f"flatpak uninstall -y {flatpak_id}",
-            "method": "flatpak",
-        }
+    # Dynamically discover installed package IDs — no hardcoded maps.
 
-    # 2. Check Snap
-    snap_name = SNAP_NAMES.get(tool_lower, tool_lower.replace(" ", "-"))
-    if _snap_installed(snap_name):
-        return {
-            "ok": True,
-            "command": f"sudo snap remove --purge {snap_name}",
-            "method": "snap",
-        }
+    # 1. Flatpak: enumerate installed apps and match by name/id
+    try:
+        fp_out = subprocess.run(
+            ["flatpak", "list", "--app", "--columns=application,name"],
+            capture_output=True, text=True, timeout=5
+        ).stdout
+        for line in fp_out.splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            fp_id   = parts[0]
+            fp_name = " ".join(parts[1:]).lower()
+            if tool_lower in fp_id.lower() or tool_lower in fp_name:
+                if _flatpak_installed(fp_id):
+                    return {"ok": True, "command": f"flatpak uninstall -y {fp_id}", "method": "flatpak"}
+    except Exception:
+        pass
 
-    # 3. Check APT/dpkg
-    apt_pkg = APT_PKG_MAP.get(tool_lower, tool_lower.replace(" ", "-"))
-    if _apt_pkg_installed(apt_pkg.split()[0]):
+    # 2. Snap: probe by slug conversion
+    snap_slug = tool_lower.replace(" ", "-")
+    if _snap_installed(snap_slug):
+        return {"ok": True, "command": f"sudo snap remove --purge {snap_slug}", "method": "snap"}
+    snap_slug2 = tool_lower.replace(" ", "")
+    if snap_slug2 != snap_slug and _snap_installed(snap_slug2):
+        return {"ok": True, "command": f"sudo snap remove --purge {snap_slug2}", "method": "snap"}
+
+    # 3. APT/dpkg: probe by slug
+    apt_slug = tool_lower.replace(" ", "-")
+    if _apt_pkg_installed(apt_slug):
         return {
             "ok": True,
-            "command": f"sudo apt-get remove --purge -y {apt_pkg} && sudo apt-get autoremove -y",
+            "command": f"sudo apt-get remove --purge -y {apt_slug} && sudo apt-get autoremove -y",
             "method": "apt",
         }
 
-    # 4. PATH binary (manual install / pip / cargo etc.)
+    # 4. PATH binary (pip / cargo / manual installs)
     binary = tool_lower.replace(" ", "")
     if shutil.which(binary):
         bin_path = shutil.which(binary)
-        return {
-            "ok": True,
-            "command": f"sudo rm -f {bin_path}",
-            "method": "binary",
-        }
+        return {"ok": True, "command": f"sudo rm -f {bin_path}", "method": "binary"}
 
-    # 5. No detection — return null and let frontend use its static map
+    # 5. Not found — let frontend show a manual input
     return {"ok": True, "command": None, "method": "not_found"}
 
+
+# ===========================================================================
+# Resolution Pipeline endpoints
+# ===========================================================================
+
+@router.post("/api/devtools/resolve")
+async def resolve_package(request: Request):
+    """
+    Full resolution pipeline.
+    Returns auto_selected | needs_disambiguation | not_found.
+    Never hardcodes IDs — always runs live search + scores + verifies.
+    """
+    body = await request.json()
+    query        = (body.get("query") or "").strip()
+    variant_hint = (body.get("variant") or "").strip()
+    force        = bool(body.get("force_refresh", False))
+
+    if not query:
+        raise HTTPException(status_code=400, detail="'query' is required.")
+
+    try:
+        from pkg_resolution import resolve as do_resolve, SCORER
+        result = do_resolve(query, variant_hint, force)
+
+        def _cand(c):
+            return {
+                "pkg_id":       c.pkg_id,
+                "name":         c.name,
+                "version":      c.version,
+                "manager":      c.manager,
+                "source":       c.source,
+                "publisher":    c.publisher,
+                "homepage":     c.homepage,
+                "description":  c.description,
+                "fuzzy_score":  c.fuzzy_score,
+                "trust_score":  c.trust_score,
+                "total_score":  c.total_score,
+                "variant_tags": c.variant_tags,
+                "verified":     c.verified,
+                "install_cmd":  (
+                    result.install_cmd
+                    if result.selected and c.pkg_id == result.selected.pkg_id
+                    else ""
+                ),
+            }
+
+        return {
+            "ok":          True,
+            "status":      result.status,
+            "confidence":  result.confidence,
+            "from_cache":  result.from_cache,
+            "source_used": result.source_used,
+            "install_cmd": result.install_cmd,
+            "selected":    _cand(result.selected) if result.selected else None,
+            "candidates":  [_cand(c) for c in result.candidates],
+        }
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/api/devtools/resolve/record-install")
+async def record_install(request: Request):
+    """
+    Record the outcome of an install attempt in the provenance cache.
+    Called automatically by the frontend when the streaming terminal reports
+    exit_code=0 (success) or exit_code!=0 (failure).
+    """
+    body = await request.json()
+    query    = (body.get("query") or "").strip()
+    pkg_id   = (body.get("pkg_id") or "").strip()
+    manager  = (body.get("manager") or "").strip()
+    source   = (body.get("source") or manager).strip()
+    publisher= (body.get("publisher") or "").strip()
+    homepage = (body.get("homepage") or "").strip()
+    variant  = (body.get("variant") or "").strip()
+    success  = bool(body.get("success", True))
+    verified_raw = body.get("verified")            # True / False / null
+    verified = (
+        True  if verified_raw is True  else
+        False if verified_raw is False else
+        None
+    )
+
+    if not query or not pkg_id or not manager:
+        raise HTTPException(status_code=400,
+                            detail="'query', 'pkg_id', and 'manager' are required.")
+    try:
+        from pkg_resolution import record_install as do_record
+        do_record(query, pkg_id, manager, source, publisher, homepage,
+                  verified, variant, success)
+        return {"ok": True, "recorded": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/api/devtools/provenance")
+async def get_provenance(query: str = "", variant: str = ""):
+    """Return the cached provenance record for a query (for UI badge display)."""
+    if not query:
+        raise HTTPException(status_code=400, detail="'query' is required.")
+    try:
+        from pkg_resolution import get_provenance as do_get
+        rec = do_get(query.strip(), variant.strip())
+        if not rec:
+            return {"ok": True, "found": False}
+        return {
+            "ok":             True,
+            "found":          True,
+            "resolved_id":    rec.resolved_id,
+            "manager":        rec.manager,
+            "source":         rec.source,
+            "publisher":      rec.publisher,
+            "homepage":       rec.homepage,
+            "verified":       rec.verified,
+            "verified_at":    rec.verified_at,
+            "install_success":rec.install_success,
+            "last_used":      rec.last_used,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/api/devtools/provenance")
+async def delete_provenance(query: str = "", variant: str = ""):
+    """Hard-delete a provenance record to force fresh resolution next time."""
+    if not query:
+        raise HTTPException(status_code=400, detail="'query' is required.")
+    try:
+        from pkg_resolution import delete_provenance as do_delete
+        do_delete(query.strip(), variant.strip())
+        return {"ok": True, "deleted": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/api/devtools/version-cmd")
+async def get_version_cmd(name: str = ""):
+    """
+    Returns the version probe command for a named tool from pkg_catalog.json.
+    The frontend runs this command in the terminal after a successful install
+    to show the user that the app is actually installed and working.
+    e.g. GET /api/devtools/version-cmd?name=git  → { "ok": true, "cmd": "git --version" }
+    """
+    if not name:
+        raise HTTPException(status_code=400, detail="'name' is required.")
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        catalog_path = _Path(__file__).parent / "pkg_catalog.json"
+        catalog = _json.loads(catalog_path.read_text(encoding="utf-8"))
+        q = name.lower().strip()
+        for tool in catalog.get("tools", []):
+            if q in [n.lower() for n in tool.get("names", [])] or \
+               any(q in n.lower() or n.lower() in q for n in tool.get("names", [])):
+                return {"ok": True, "cmd": tool.get("version_cmd", ""), "found": True}
+        return {"ok": True, "cmd": "", "found": False}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/api/ollama/status")

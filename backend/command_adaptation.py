@@ -482,102 +482,49 @@ def check_tool_installed(name: str) -> bool:
 
 
 def get_tool_install_command(app_name: str) -> tuple[str, str]:
+    """
+    Discover and return the correct install command for `app_name`.
+
+    Strategy (in order):
+      1. pkg_discovery.search_and_auto_pick() — runs live package-manager search
+         (winget / apt+snap / brew / npm / pypi) and picks the top result.
+      2. Generic OS-level last resort (no hardcoded IDs).
+
+    Returns (cmd, explanation).  cmd may be empty if nothing is found.
+    """
     import platform
-    app_name = app_name.strip().lower()
+    name = app_name.strip()
     is_linux = platform.system() == "Linux"
-    
-    cmd = ""
-    explanation = ""
-    
-    if app_name in ("git", "git missing"):
-        cmd = "sudo apt-get install -y git" if is_linux else "winget install --id Git.Git --exact --silent"
-        explanation = "Install Git version control safely."
-    elif app_name in ("docker", "docker missing"):
-        cmd = "sudo apt-get install -y docker.io && sudo systemctl enable --now docker" if is_linux else "winget install --id Docker.DockerDesktop --exact --silent"
-        explanation = "Install Docker Engine container host."
-    elif app_name in ("poetry", "poetry missing"):
-        cmd = "curl -sSL https://install.python-poetry.org | python3 -"
-        explanation = "Install Poetry for Python dependency management."
-    elif app_name in ("pnpm", "pnpm missing"):
-        cmd = "npm install -g pnpm"
-        explanation = "Install pnpm global package manager."
-    elif app_name in ("pip", "pip broken"):
-        cmd = "sudo apt-get install -y python3-pip" if is_linux else "python -m ensurepip"
-        explanation = "Install pip package manager."
-    elif app_name in ("npm", "npm broken"):
-        cmd = "sudo apt-get install -y npm" if is_linux else "winget install --id OpenJS.NodeJS --exact --silent"
-        explanation = "Install npm package manager."
-    elif app_name in ("python", "python3", "python missing"):
-        cmd = "sudo apt-get install -y python3" if is_linux else "winget install Python.Python.3"
-        explanation = "Install Python runtime environment."
-    elif app_name in ("node", "node.js", "nodejs", "node.js missing"):
-        cmd = "sudo apt-get install -y nodejs" if is_linux else "winget install OpenJS.NodeJS"
-        explanation = "Install Node.js JavaScript runtime environment."
-    elif app_name in ("code", "vscode", "vs code", "vs code corrupted installation"):
-        cmd = "sudo snap install code --classic" if is_linux else "winget install Microsoft.VisualStudioCode"
-        explanation = "Install VS Code IDE."
-    elif app_name in ("java", "java missing"):
-        cmd = "sudo apt-get install -y default-jdk" if is_linux else "winget install Oracle.JDK.21"
-        explanation = "Install Java runtime environment."
-    elif app_name in ("snap", "snap missing"):
-        cmd = "sudo apt-get install -y snapd"
-        explanation = "Install Snap package manager."
-    elif app_name in ("android", "android-studio", "android studio", "android studio missing"):
-        cmd = "sudo snap install android-studio --classic"
-        explanation = "Install Android Studio IDE."
-    elif app_name in ("ollama", "ollama missing"):
-        cmd = "curl -sSL https://ollama.ai/install.sh | sh"
-        explanation = "Install Ollama locally."
-    elif app_name in ("rust", "rust compiler", "rust missing"):
-        cmd = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" if is_linux else "winget install Rust.Rustup"
-        explanation = "Install Rust compiler and cargo package manager."
-    elif app_name in ("go", "golang", "go missing"):
-        cmd = "sudo apt-get install -y golang-go" if is_linux else "winget install GoLang.Go"
-        explanation = "Install Go programming language runtime."
-    elif app_name in ("htop", "htop missing"):
-        cmd = "sudo apt-get install -y htop"
-        explanation = "Install htop interactive system monitor."
-    elif app_name in ("neovim", "nvim", "neovim missing"):
-        cmd = "sudo apt-get install -y neovim" if is_linux else "winget install Vim.Neovim"
-        explanation = "Install Neovim text editor."
-    elif app_name in ("github cli", "gh", "github cli missing"):
-        cmd = "sudo apt-get install -y gh" if is_linux else "winget install GitHub.cli"
-        explanation = "Install GitHub command line interface."
-    elif app_name in ("fzf", "fzf missing"):
-        cmd = "sudo apt-get install -y fzf" if is_linux else "winget install junegunn.fzf"
-        explanation = "Install fzf command-line fuzzy finder."
-    elif app_name in ("jq", "jq missing"):
-        cmd = "sudo apt-get install -y jq" if is_linux else "winget install jqlang.jq"
-        explanation = "Install jq command-line JSON processor."
-    elif app_name in ("tmux", "tmux missing"):
-        cmd = "sudo apt-get install -y tmux"
-        explanation = "Install tmux terminal multiplexer."
-    elif app_name in ("pycharm", "pycharm missing", "pycharm community"):
-        cmd = "sudo snap install pycharm-community --classic" if is_linux else "winget install JetBrains.PyCharm.Community"
-        explanation = "Install PyCharm Community Edition IDE."
-    elif app_name in ("sublime", "sublime text", "sublime missing", "subl"):
-        cmd = "sudo snap install sublime-text --classic" if is_linux else "winget install SublimeHQ.SublimeText"
-        explanation = "Install Sublime Text editor."
-    elif app_name in ("postman", "postman missing"):
-        cmd = "sudo snap install postman" if is_linux else "winget install Postman.Postman"
-        explanation = "Install Postman API client tool."
-    elif app_name in ("dbeaver", "dbeaver ce", "dbeaver ce missing"):
-        cmd = "sudo snap install dbeaver-ce" if is_linux else "winget install dbeaver.DBeaver"
-        explanation = "Install DBeaver database GUI client."
-    elif app_name in ("slack", "slack missing"):
-        cmd = "sudo snap install slack" if is_linux else "winget install Slack.Slack"
-        explanation = "Install Slack desktop messaging client."
-    elif app_name in ("brave", "brave browser", "brave missing"):
-        cmd = "sudo snap install brave" if is_linux else "winget install Brave.Brave"
-        explanation = "Install Brave privacy-focused browser."
-    elif app_name in ("chrome", "google chrome", "google chrome missing"):
-        cmd = "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt-get install -y ./google-chrome-stable_current_amd64.deb && rm google-chrome-stable_current_amd64.deb" if is_linux else "winget install Google.Chrome"
-        explanation = "Install Google Chrome stable web browser."
-    elif app_name in ("firefox", "mozilla firefox", "firefox missing"):
-        cmd = "sudo snap install firefox" if is_linux else "winget install Mozilla.Firefox"
-        explanation = "Install Mozilla Firefox web browser."
-        
-    return cmd, explanation
+    is_macos = platform.system() == "Darwin"
+
+    # 1. Dynamic discovery
+    try:
+        from pkg_discovery import search_and_auto_pick
+        result = search_and_auto_pick(name)
+        if result:
+            cmd, pkg_id, manager = result
+            return cmd, f"Dynamically discovered '{pkg_id}' via {manager}."
+    except Exception as exc:
+        print(f"[command_adaptation] pkg_discovery failed for '{name}': {exc}")
+
+    # 2. Generic OS fallback
+    slug = name.lower().replace(" ", "-").replace("/", "-").strip("-")
+    if is_linux:
+        return (
+            f"sudo apt-get update && sudo apt-get install -y {slug}",
+            f"Install {name} via apt (generic slug fallback).",
+        )
+    if is_macos:
+        return (
+            f"brew install {slug}",
+            f"Install {name} via Homebrew (generic slug fallback).",
+        )
+    # Windows
+    return (
+        f"winget search \"{name}\" --accept-source-agreements",
+        f"Search winget for '{name}' — no verified ID found automatically.",
+    )
+
 
 
 def auto_heal_adaptation_scores(engine: Any) -> None:

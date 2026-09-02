@@ -1,0 +1,19 @@
+{
+  "name": "devtools-control-center",
+  "version": "1.0.0",
+  "description": "Standalone Developer Tools Store, Resolution Pipeline & Control Center",
+  "main": "frontend/index.html",
+  "scripts": {
+    "start": "python backend/main.py",
+    "test": "python -m pytest tests/"
+  },
+  "keywords": [
+    "devtools",
+    "package-manager",
+    "control-center",
+    "approval-queue",
+    "fastapi"
+  ],
+  "author": "",
+  "license": "MIT"
+}

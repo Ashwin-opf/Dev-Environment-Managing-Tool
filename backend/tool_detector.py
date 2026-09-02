@@ -185,12 +185,30 @@ def npm_installed() -> bool:
     )
 
 
+def _program_files() -> list[Path]:
+    paths = []
+    if platform.system() == "Windows":
+        for env_var in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            val = os.environ.get(env_var)
+            if val:
+                paths.append(Path(val))
+    elif platform.system() == "Darwin":
+        paths.extend([Path("/Applications"), Path("/opt/homebrew/bin"), Path("/usr/local/bin")])
+    return paths
+
+
 def git_installed() -> bool:
     if _is_mock_installed_in_dev_mode("git"):
         return True
+    pf_paths = [pf / "Git/bin/git.exe" for pf in _program_files()]
     return detect_tool(
         binaries=("git", "git.exe"),
-        paths=("/usr/bin/git", "/usr/local/bin/git", "C:\\Program Files\\Git\\bin\\git.exe"),
+        paths=(
+            "/usr/bin/git",
+            "/usr/local/bin/git",
+            "/opt/homebrew/bin/git",
+            *pf_paths,
+        ),
         process_markers=("/usr/bin/git", "git.exe"),
         exact_process_names=("git", "git.exe"),
     )
@@ -199,13 +217,15 @@ def git_installed() -> bool:
 def docker_installed() -> bool:
     if _is_mock_installed_in_dev_mode("docker"):
         return True
+    pf_paths = [pf / "Docker/Docker/resources/bin/docker.exe" for pf in _program_files()]
     return detect_tool(
         binaries=("docker", "docker.exe"),
         paths=(
             "/usr/bin/docker",
             "/usr/local/bin/docker",
+            "/opt/homebrew/bin/docker",
             "/snap/bin/docker",
-            "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe",
+            *pf_paths,
         ),
         snap_names=("docker",),
         desktop_files=("docker-desktop.desktop",),
@@ -216,13 +236,16 @@ def docker_installed() -> bool:
 def java_installed() -> bool:
     if _is_mock_installed_in_dev_mode("java"):
         return True
+    pf_paths = []
+    for pf in _program_files():
+        pf_paths.extend([pf / "Java", pf / "Eclipse Adoptium"])
     return detect_tool(
         binaries=("java", "javac"),
         paths=(
             "/usr/bin/java",
             "/usr/local/bin/java",
-            "C:\\Program Files\\Java",
-            "C:\\Program Files\\Eclipse Adoptium",
+            "/opt/homebrew/bin/java",
+            *pf_paths,
         ),
         process_markers=("/usr/bin/java", "java.exe", "jdk"),
         exact_process_names=("java", "java.exe"),
@@ -237,13 +260,15 @@ def snap_installed() -> bool:
 
 
 def android_studio_installed() -> bool:
+    pf_paths = [pf / "Android/Android Studio/bin/studio64.exe" for pf in _program_files()]
     return detect_tool(
         binaries=("android-studio", "studio", "studio.sh"),
         paths=(
             "/snap/bin/android-studio",
             "/opt/android-studio/bin/studio.sh",
+            "/Applications/Android Studio.app/Contents/MacOS/studio",
             _home() / "android-studio/bin/studio.sh",
-            "C:\\Program Files\\Android\\Android Studio\\bin\\studio64.exe",
+            *pf_paths,
         ),
         flatpak_ids=("com.google.AndroidStudio",),
         snap_names=("android-studio",),
@@ -255,12 +280,21 @@ def android_studio_installed() -> bool:
 def vscode_installed() -> bool:
     if _is_mock_installed_in_dev_mode("code") or _is_mock_installed_in_dev_mode("vscode"):
         return True
+    pf_paths = []
+    for pf in _program_files():
+        pf_paths.extend([
+            pf / "Microsoft VS Code/bin/code.cmd",
+            pf / "Microsoft VS Code/Code.exe",
+            pf / "Programs/Microsoft VS Code/bin/code.cmd",
+        ])
     return detect_tool(
         binaries=("code", "code-oss", "code-insiders", "code.cmd"),
         paths=(
             "/snap/bin/code",
             "/usr/bin/code",
             "/usr/local/bin/code",
+            "/opt/homebrew/bin/code",
+            "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
             "/var/lib/snapd/snap/bin/code",
             "/var/lib/flatpak/exports/bin/com.visualstudio.code",
             "/var/lib/flatpak/exports/bin/code",
@@ -268,8 +302,7 @@ def vscode_installed() -> bool:
             _home() / ".local/share/flatpak/exports/bin/code",
             "/opt/visual-studio-code/bin/code",
             "/usr/share/code/bin/code",
-            "C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd",
-            _home() / "AppData/Local/Programs/Microsoft VS Code/bin/code.cmd",
+            *pf_paths,
         ),
         flatpak_ids=("com.visualstudio.code",),
         snap_names=("code",),

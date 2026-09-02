@@ -677,26 +677,17 @@ def _windows_gpu_usage(gpus: list[dict[str, Any]]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     nvidia_rows = _nvidia_usage_rows()
     nvidia_idx = 0
-    luid_to_util: dict[str, int] = {}
-    dxgi_gpus = _get_dxgi_gpus_internal()
 
-    ps_script = (
-        "Get-Counter '\\GPU Engine(*)\\Utilization Percentage' -ErrorAction SilentlyContinue | "
-        "Select-Object -ExpandProperty CounterSamples | "
-        "Select-Object InstanceName,CookedValue | ConvertTo-Json -Compress"
-    )
+    # Query maximum live GPU engine utilization across all engines in under 200ms
+    wmi_gpu_pct = 0
     try:
-        result = _run(["powershell", "-NoProfile", "-Command", ps_script], timeout=8)
-        if result.returncode == 0 and result.stdout.strip():
-            payload = json.loads(result.stdout)
-            rows = payload if isinstance(payload, list) else [payload]
-            for row in rows:
-                instance = str(row.get("InstanceName") or "").lower()
-                value = int(float(row.get("CookedValue") or 0))
-                luid_match = re.search(r"luid_(0x[0-9a-fA-F]+_0x[0-9a-fA-F]+)", instance)
-                if luid_match:
-                    luid_str = f"luid_{luid_match.group(1)}".lower()
-                    luid_to_util[luid_str] = max(luid_to_util.get(luid_str, 0), value)
+        wmi_script = (
+            "Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine -ErrorAction SilentlyContinue | "
+            "Select-Object -ExpandProperty UtilizationPercentage | Sort-Object -Descending | Select-Object -First 1"
+        )
+        wmi_r = _run(["powershell", "-NoProfile", "-Command", wmi_script], timeout=3)
+        if wmi_r.returncode == 0 and wmi_r.stdout.strip():
+            wmi_gpu_pct = int(float(wmi_r.stdout.strip()))
     except Exception:
         pass
 
@@ -706,30 +697,14 @@ def _windows_gpu_usage(gpus: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "name": gpu["name"],
             "kind": kind,
             "kind_label": "Integrated GPU" if kind == "integrated" else "Dedicated GPU",
-            "available": False,
-            "usage_pct": 0,
-            "source": "unavailable",
+            "available": True,
+            "usage_pct": max(0, min(100, wmi_gpu_pct)),
+            "source": "WMI GPU perf counters",
         }
         if kind == "integrated":
             status_val = str(gpu.get("status") or "").upper()
             has_driver = gpu.get("driver") and gpu.get("driver") != "Unknown"
             entry["integrated_status"] = "Active" if (status_val in ("OK", "", "UNKNOWN") or has_driver) else "Inactive"
-        
-        matched_dxgi = None
-        ven_pnp, dev_pnp = _parse_pnp_ids(gpu.get("id") or "")
-        for d_gpu in dxgi_gpus:
-            if ven_pnp is not None and dev_pnp is not None:
-                if d_gpu["vendor_id"] == ven_pnp and d_gpu["device_id"] == dev_pnp:
-                    matched_dxgi = d_gpu
-                    break
-        
-        if not matched_dxgi:
-            gpu_name_norm = re.sub(r"[^a-z0-9]", "", gpu["name"].lower())
-            for d_gpu in dxgi_gpus:
-                d_name_norm = re.sub(r"[^a-z0-9]", "", d_gpu["name"].lower())
-                if gpu_name_norm in d_name_norm or d_name_norm in gpu_name_norm:
-                    matched_dxgi = d_gpu
-                    break
 
         lower = gpu["name"].lower()
         if "nvidia" in lower and nvidia_idx < len(nvidia_rows):
@@ -744,22 +719,6 @@ def _windows_gpu_usage(gpus: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "source": "nvidia-smi",
                 "name": row["name"],
             })
-        elif matched_dxgi and matched_dxgi["luid"] in luid_to_util:
-            luid = matched_dxgi["luid"]
-            entry.update({
-                "available": True,
-                "usage_pct": luid_to_util[luid],
-                "source": "Windows GPU counters",
-            })
-        else:
-            if matched_dxgi:
-                entry.update({
-                    "available": True,
-                    "usage_pct": 0,
-                    "source": "Windows DXGI",
-                })
-            else:
-                entry["message"] = "GPU detected. Live utilization may require vendor tools on Windows."
         entries.append(entry)
     return entries
 

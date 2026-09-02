@@ -137,16 +137,130 @@ def _extract_package_name(tool_info: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# DevToolsManager
 # ---------------------------------------------------------------------------
+# Predefined developer tools and runtimes for host system detection
+# ---------------------------------------------------------------------------
+_KNOWN_SYSTEM_TOOLS = [
+    {
+        "app_id": "python",
+        "name": "Python",
+        "category": "Languages & Runtimes",
+        "description": "High-level general-purpose programming language and runtime.",
+        "binaries": ["python", "python3", "py"],
+        "package_manager": "winget",
+        "pkg_name": "Python.Python.3.12",
+    },
+    {
+        "app_id": "git",
+        "name": "Git",
+        "category": "Version Control",
+        "description": "Distributed version control system to track changes in source code.",
+        "binaries": ["git"],
+        "detector": "git_installed",
+        "package_manager": "winget",
+        "pkg_name": "Git.Git",
+    },
+    {
+        "app_id": "node",
+        "name": "Node.js",
+        "category": "JavaScript Runtime",
+        "description": "JavaScript runtime built on Chrome's V8 engine.",
+        "binaries": ["node", "nodejs"],
+        "package_manager": "winget",
+        "pkg_name": "OpenJS.NodeJS",
+    },
+    {
+        "app_id": "npm",
+        "name": "npm",
+        "category": "Package Manager",
+        "description": "Package manager for JavaScript and Node.js dependencies.",
+        "binaries": ["npm"],
+        "package_manager": "npm",
+        "pkg_name": "npm",
+    },
+    {
+        "app_id": "vscode",
+        "name": "VS Code",
+        "category": "Code Editors",
+        "description": "Extensible code editor developed by Microsoft.",
+        "binaries": ["code"],
+        "detector": "vscode_installed",
+        "package_manager": "winget",
+        "pkg_name": "Microsoft.VisualStudioCode",
+    },
+    {
+        "app_id": "docker",
+        "name": "Docker",
+        "category": "DevOps & Containers",
+        "description": "Platform for containerizing and running applications.",
+        "binaries": ["docker"],
+        "detector": "docker_installed",
+        "package_manager": "winget",
+        "pkg_name": "Docker.DockerDesktop",
+    },
+    {
+        "app_id": "rust",
+        "name": "Rust & Cargo",
+        "category": "Languages & Runtimes",
+        "description": "Systems programming language and Cargo package manager.",
+        "binaries": ["cargo", "rustc"],
+        "package_manager": "winget",
+        "pkg_name": "Rustlang.Rustup",
+    },
+    {
+        "app_id": "java",
+        "name": "Java JDK",
+        "category": "Languages & Runtimes",
+        "description": "Java SE Development Kit and runtime environment.",
+        "binaries": ["java", "javac"],
+        "detector": "java_installed",
+        "package_manager": "winget",
+        "pkg_name": "Oracle.JDK.21",
+    },
+    {
+        "app_id": "go",
+        "name": "Go",
+        "category": "Languages & Runtimes",
+        "description": "Compiled programming language designed for scalable services.",
+        "binaries": ["go"],
+        "package_manager": "winget",
+        "pkg_name": "GoLang.Go",
+    },
+    {
+        "app_id": "ollama",
+        "name": "Ollama",
+        "category": "AI & Local LLMs",
+        "description": "Local large language model runner and management service.",
+        "binaries": ["ollama"],
+        "detector": "ollama_installed",
+        "package_manager": "winget",
+        "pkg_name": "Ollama.Ollama",
+    },
+    {
+        "app_id": "gh",
+        "name": "GitHub CLI",
+        "category": "CLI Utilities",
+        "description": "Official CLI to manage GitHub repos, issues, and PRs.",
+        "binaries": ["gh"],
+        "package_manager": "winget",
+        "pkg_name": "GitHub.cli",
+    },
+    {
+        "app_id": "neovim",
+        "name": "Neovim",
+        "category": "Code Editors",
+        "description": "Hyperextensible Vim-based terminal text editor.",
+        "binaries": ["nvim"],
+        "package_manager": "winget",
+        "pkg_name": "Neovim.Neovim",
+    },
+]
+
 
 class DevToolsManager:
     """
-    Manages the lifecycle of tools installed through the Dev Tools interface.
-
-    Persistence: a JSON file (``devtools_managed_apps.json``) stored in the
-    backend directory.  Each entry conforms to the ``ManagedApplication`` data
-    model defined in design.md.
+    Manages the lifecycle of tools installed through the Dev Tools interface
+    and auto-discovers local host developer tools.
     """
 
     def __init__(self, store_path: Optional[Path] = None) -> None:
@@ -154,17 +268,12 @@ class DevToolsManager:
         self._apps: dict[str, dict] = {}
         self._load()
 
-    # ------------------------------------------------------------------
-    # Persistence helpers
-    # ------------------------------------------------------------------
-
     def _load(self) -> None:
         """Load managed apps from the JSON store (creates it if absent)."""
         if self._store_path.exists():
             try:
                 raw = json.loads(self._store_path.read_text(encoding="utf-8"))
                 if isinstance(raw, list):
-                    # Legacy list format – convert to dict keyed by app_id
                     self._apps = {item["app_id"]: item for item in raw if isinstance(item, dict) and "app_id" in item}
                 elif isinstance(raw, dict):
                     self._apps = raw
@@ -183,23 +292,50 @@ class DevToolsManager:
                 encoding="utf-8",
             )
         except OSError as exc:
-            # Non-fatal — log and continue
             print(f"[DevToolsManager] Warning: could not save store: {exc}")
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def _discover_system_installed_apps(self) -> list[dict]:
+        """Scan the local operating system for installed developer tools and runtimes."""
+        discovered = []
+        is_win = platform.system() == "Windows"
+        is_mac = platform.system() == "Darwin"
+
+        def _is_tool_present(t_def: dict) -> bool:
+            detector_name = t_def.get("detector")
+            if detector_name:
+                try:
+                    import tool_detector
+                    func = getattr(tool_detector, detector_name, None)
+                    if func and func():
+                        return True
+                except Exception:
+                    pass
+            for bin_name in t_def.get("binaries", []):
+                if shutil.which(bin_name) or (is_win and shutil.which(f"{bin_name}.exe")):
+                    return True
+            return False
+
+        for t in _KNOWN_SYSTEM_TOOLS:
+            app_id = t["app_id"]
+            if _is_tool_present(t):
+                pm = "winget" if is_win else ("brew" if is_mac else t.get("package_manager", "apt"))
+                pkg = t.get("pkg_name", app_id)
+                discovered.append({
+                    "app_id": app_id,
+                    "name": t["name"],
+                    "category": t["category"],
+                    "description": t["description"],
+                    "package_manager": pm,
+                    "install_command": f"{pm} install {pkg}",
+                    "update_command": _generate_update_command(pkg, pm),
+                    "uninstall_command": _generate_uninstall_command(pkg, pm),
+                    "installation_date": datetime.now(timezone.utc).isoformat(),
+                    "auto_managed": True,
+                })
+        return discovered
 
     def install_tool(self, tool_info: dict) -> dict:
-        """
-        Record a tool installation and automatically add it to the managed apps list.
-
-        ``tool_info`` should contain at minimum ``name`` (or ``app``) and
-        optionally ``install_command``, ``package_manager``, ``app_id``, and
-        ``category``.
-
-        Returns the newly created or updated managed-app record.
-        """
+        """Record a tool installation and automatically add it to the managed apps list."""
         name = (
             tool_info.get("name")
             or tool_info.get("app")
@@ -207,7 +343,6 @@ class DevToolsManager:
             or "Unknown Tool"
         ).strip()
 
-        # Derive a stable app_id from the name if not provided
         app_id = (
             tool_info.get("app_id")
             or name.lower().replace(" ", "-").replace("/", "-").replace(".", "-")
@@ -219,7 +354,6 @@ class DevToolsManager:
             or _infer_package_manager(install_command)
         )
 
-        # Derive a canonical package name for update/uninstall commands
         pkg = _extract_package_name(tool_info)
 
         update_command = (
@@ -251,13 +385,14 @@ class DevToolsManager:
         return record
 
     def get_management_commands(self, app_id: str) -> dict:
-        """
-        Return the update and uninstall commands for a managed app.
-
-        Returns ``{"update_command": "...", "uninstall_command": "..."}`` or
-        raises ``KeyError`` if the app is not tracked.
-        """
+        """Return the update and uninstall commands for a managed app."""
         record = self._apps.get(app_id)
+        if record is None:
+            # Check system apps
+            for sys_app in self._discover_system_installed_apps():
+                if sys_app["app_id"] == app_id:
+                    record = sys_app
+                    break
         if record is None:
             raise KeyError(f"App '{app_id}' is not in the managed apps list.")
         return {
@@ -266,8 +401,15 @@ class DevToolsManager:
         }
 
     def list_managed_apps(self) -> list:
-        """Return all tracked managed apps as a list."""
-        return list(self._apps.values())
+        """Return all tracked managed apps merged with auto-discovered local host apps."""
+        combined = {}
+        # 1. First add real detected system apps on the host machine
+        for app in self._discover_system_installed_apps():
+            combined[app["app_id"]] = app
+        # 2. Layer any custom or modified user records from store
+        for app_id, app in self._apps.items():
+            combined[app_id] = app
+        return list(combined.values())
 
     def remove_managed_app(self, app_id: str) -> bool:
         """Remove an app from the managed list. Returns True if found and removed."""
@@ -279,7 +421,10 @@ class DevToolsManager:
 
     def get_managed_app(self, app_id: str) -> Optional[dict]:
         """Return a single managed app record, or None if not found."""
-        return self._apps.get(app_id)
+        for app in self.list_managed_apps():
+            if app.get("app_id") == app_id:
+                return app
+        return None
 
 
 # ---------------------------------------------------------------------------

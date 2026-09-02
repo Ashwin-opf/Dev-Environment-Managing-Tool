@@ -302,11 +302,18 @@ async def check_api_token(request: Request, call_next):
 
 # ─── Route registration ───────────────────────────────────────────────────────
 
+import routes_agent
+import routes_catalog
+import routes_control_center
+
 app.include_router(routes_ai.router)
 app.include_router(routes_logs.router)
 app.include_router(routes_files.router)
 app.include_router(routes_system.router)
 app.include_router(routes_shce.router)
+app.include_router(routes_agent.router)
+app.include_router(routes_catalog.router)
+app.include_router(routes_control_center.router)
 
 
 # ─── Health endpoint ──────────────────────────────────────────────────────────
@@ -354,13 +361,37 @@ if __name__ == "__main__":
 
     host = os.getenv("API_HOST", "127.0.0.1")
     port = int(os.getenv("API_PORT", "8765"))
+    reload_flag = os.getenv("API_RELOAD", "false").lower() in ("1", "true", "yes")
 
-    # timeout_graceful_shutdown: give in-flight requests 5 s to finish when
-    # SIGTERM arrives, then uvicorn exits cleanly and releases the port.
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        log_level="info",
-        timeout_graceful_shutdown=5,
-    )
+    # Free port if held by a zombie/orphan process from a previous session
+    try:
+        current_pid = os.getpid()
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.laddr and conn.laddr.port == port and conn.pid and conn.pid != current_pid:
+                try:
+                    psutil.Process(conn.pid).kill()
+                    print(f"[PC Doctor] Freed port {port} from orphaned PID {conn.pid}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    if reload_flag:
+        uvicorn.run(
+            "main:app",
+            host=host,
+            port=port,
+            log_level="info",
+            reload=True,
+            reload_dirs=[str(Path(__file__).parent)],
+            timeout_graceful_shutdown=5,
+        )
+    else:
+        uvicorn.run(
+            app,
+            host=host,
+            port=port,
+            log_level="info",
+            timeout_graceful_shutdown=5,
+        )
+

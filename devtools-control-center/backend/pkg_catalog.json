@@ -1,0 +1,248 @@
+{
+  "_comment": "pkg_catalog.json — Domain hints, variant definitions, and version probe commands for known tools. NO install commands here — those are always discovered live by pkg_discovery. version_cmd is used only for post-install confirmation.",
+  "confidence_threshold": 80.0,
+  "adapter_priority": {
+    "Windows": ["winget", "msstore", "choco", "scoop", "npm", "pip"],
+    "Linux":   ["apt", "snap", "flatpak", "npm", "pip"],
+    "Darwin":  ["brew", "npm", "pip"]
+  },
+  "tools": [
+    {
+      "names": ["python", "python3", "py"],
+      "known_domain": "python.org",
+      "version_cmd": "python --version",
+      "variants": {
+        "runtime": { "id_contains": ["Python.Python"], "source_prefer": "winget" }
+      },
+      "default_variant": "runtime"
+    },
+    {
+      "names": ["pip"],
+      "known_domain": "pip.pypa.io",
+      "version_cmd": "pip --version",
+      "variants": {}
+    },
+    {
+      "names": ["node", "node.js", "nodejs"],
+      "known_domain": "nodejs.org",
+      "version_cmd": "node --version",
+      "variants": {
+        "lts": { "id_contains": ["OpenJS.NodeJS.LTS", "OpenJS.NodeJS"], "source_prefer": "winget" }
+      },
+      "default_variant": "lts"
+    },
+    {
+      "names": ["npm"],
+      "known_domain": "npmjs.com",
+      "version_cmd": "npm --version",
+      "variants": {}
+    },
+    {
+      "names": ["git"],
+      "known_domain": ["git-scm.com", "gitforwindows.org"],
+      "version_cmd": "git --version",
+      "variants": {
+        "cli": { "id_contains": ["Git.Git", "Microsoft.Git"], "source_prefer": "winget" }
+      },
+      "default_variant": "cli"
+    },
+    {
+      "names": ["docker", "docker desktop"],
+      "known_domain": "docker.com",
+      "version_cmd": "docker --version",
+      "variants": {
+        "desktop": { "id_contains": ["Docker.DockerDesktop"], "source_prefer": "winget" },
+        "cli":     { "id_contains": ["Docker.DockerCLI"],     "source_prefer": "winget" }
+      },
+      "default_variant": "desktop"
+    },
+    {
+      "names": ["vs code", "visual studio code", "vscode", "code"],
+      "known_domain": "code.visualstudio.com",
+      "version_cmd": "code --version",
+      "variants": {
+        "desktop": { "id_contains": ["Microsoft.VisualStudioCode"], "source_prefer": "winget" }
+      },
+      "default_variant": "desktop"
+    },
+    {
+      "names": ["java", "jdk", "jre"],
+      "known_domain": "java.com",
+      "version_cmd": "java -version",
+      "variants": {
+        "openjdk": { "id_contains": ["Microsoft.OpenJDK", "EclipseAdoptium"], "source_prefer": "winget" },
+        "oracle":  { "id_contains": ["Oracle.JDK"],                           "source_prefer": "winget" }
+      },
+      "default_variant": "openjdk"
+    },
+    {
+      "names": ["android studio"],
+      "known_domain": "developer.android.com",
+      "version_cmd": "",
+      "variants": {
+        "desktop": { "id_contains": ["Google.AndroidStudio"], "source_prefer": "winget" }
+      },
+      "default_variant": "desktop"
+    },
+    {
+      "names": ["ollama"],
+      "known_domain": "ollama.com",
+      "version_cmd": "ollama --version",
+      "variants": {
+        "desktop": { "id_contains": ["Ollama.Ollama"], "source_prefer": "winget" }
+      },
+      "default_variant": "desktop"
+    },
+    {
+      "names": ["poetry"],
+      "known_domain": "python-poetry.org",
+      "version_cmd": "poetry --version",
+      "variants": {}
+    },
+    {
+      "names": ["pnpm"],
+      "known_domain": "pnpm.io",
+      "version_cmd": "pnpm --version",
+      "variants": {}
+    },
+    {
+      "names": ["rust", "rustup", "cargo"],
+      "known_domain": "rust-lang.org",
+      "version_cmd": "rustc --version",
+      "variants": {
+        "toolchain": { "id_contains": ["Rustlang.Rustup"], "source_prefer": "winget" }
+      },
+      "default_variant": "toolchain"
+    },
+    {
+      "names": ["go", "golang"],
+      "known_domain": "go.dev",
+      "version_cmd": "go version",
+      "variants": {
+        "runtime": { "id_contains": ["GoLang.Go"], "source_prefer": "winget" }
+      },
+      "default_variant": "runtime"
+    },
+    {
+      "names": ["neovim", "nvim"],
+      "known_domain": "neovim.io",
+      "version_cmd": "nvim --version",
+      "variants": {}
+    },
+    {
+      "names": ["github cli", "gh"],
+      "known_domain": "cli.github.com",
+      "version_cmd": "gh --version",
+      "variants": {}
+    },
+    {
+      "names": ["fzf"],
+      "known_domain": "github.com/junegunn/fzf",
+      "version_cmd": "fzf --version",
+      "variants": {}
+    },
+    {
+      "names": ["jq"],
+      "known_domain": "jqlang.github.io/jq",
+      "version_cmd": "jq --version",
+      "variants": {}
+    },
+    {
+      "names": ["pycharm"],
+      "known_domain": "jetbrains.com",
+      "version_cmd": "",
+      "variants": {
+        "community":    { "id_contains": ["JetBrains.PyCharm.Community"],    "source_prefer": "winget" },
+        "professional": { "id_contains": ["JetBrains.PyCharm.Professional"], "source_prefer": "winget" }
+      },
+      "default_variant": "community"
+    },
+    {
+      "names": ["sublime", "sublime text"],
+      "known_domain": "sublimetext.com",
+      "version_cmd": "",
+      "variants": {}
+    },
+    {
+      "names": ["postman"],
+      "known_domain": "postman.com",
+      "version_cmd": "",
+      "variants": {}
+    },
+    {
+      "names": ["dbeaver", "dbeaver ce"],
+      "known_domain": "dbeaver.io",
+      "version_cmd": "",
+      "variants": {
+        "community":   { "id_contains": ["dbeaver.DBeaver"],   "source_prefer": "winget" },
+        "enterprise":  { "id_contains": ["dbeaver.DBeaverEE"], "source_prefer": "winget" }
+      },
+      "default_variant": "community"
+    },
+    {
+      "names": ["slack"],
+      "known_domain": "slack.com",
+      "version_cmd": "",
+      "variants": {
+        "desktop": { "id_contains": ["SlackTechnologies.Slack"], "source_prefer": "winget" }
+      },
+      "default_variant": "desktop"
+    },
+    {
+      "names": ["brave", "brave browser"],
+      "known_domain": "brave.com",
+      "version_cmd": "",
+      "variants": {}
+    },
+    {
+      "names": ["chrome", "google chrome"],
+      "known_domain": "google.com/chrome",
+      "version_cmd": "",
+      "variants": {
+        "stable": { "id_contains": ["Google.Chrome"],    "source_prefer": "winget" },
+        "dev":    { "id_contains": ["Google.Chrome.Dev"],"source_prefer": "winget" }
+      },
+      "default_variant": "stable"
+    },
+    {
+      "names": ["firefox", "mozilla firefox"],
+      "known_domain": "mozilla.org",
+      "version_cmd": "",
+      "variants": {}
+    },
+    {
+      "names": ["codex", "openai codex"],
+      "known_domain": "openai.com",
+      "version_cmd": "codex --version",
+      "variants": {
+        "cli":     { "id_contains": ["OpenAI.Codex"], "source_prefer": "winget" },
+        "desktop": { "id_contains": ["Codex"],        "source_prefer": "msstore" }
+      },
+      "default_variant": "cli"
+    },
+    {
+      "names": ["meta muse", "meta muse code"],
+      "known_domain": "meta.ai",
+      "version_cmd": "",
+      "variants": {
+        "desktop": { "id_contains": ["Meta.Muse"], "source_prefer": "msstore" }
+      },
+      "default_variant": "desktop"
+    },
+    {
+      "names": ["coderabbit"],
+      "known_domain": "coderabbit.ai",
+      "version_cmd": "",
+      "variants": {}
+    },
+    {
+      "names": ["lovable"],
+      "known_domain": "lovable.dev",
+      "version_cmd": "",
+      "variants": {
+        "desktop": { "id_contains": ["Lovable"], "source_prefer": "msstore" }
+      },
+      "default_variant": "desktop"
+    }
+  ]
+}

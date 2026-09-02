@@ -1,5 +1,5 @@
-"""
-System Scanner â€“ Detects health issues across OS, dev tools, and hardware.
+﻿"""
+System Scanner — Detects health issues across OS, dev tools, and hardware.
 Each check returns a dict: {type, severity, title, detail, recipe_hint}
 """
 import os
@@ -8,11 +8,12 @@ import shutil
 import subprocess
 import psutil
 import re
+import time
 from pathlib import Path
 from typing import Any, List, Dict
 
 
-# Cross-platform subprocess wrapper â€“ always decodes output as UTF-8.
+# Cross-platform subprocess wrapper — always decodes output as UTF-8.
 # Prevents UnicodeDecodeError on Windows where cmd/PowerShell defaults to cp1252.
 def _safe_run(
     cmd,
@@ -39,6 +40,24 @@ SEVERITY_LOW = "low"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_HIGH = "high"
 
+# TTL cache for expensive scan steps (step_id -> (timestamp, result))
+_STEP_CACHE: Dict[str, tuple] = {}
+_STEP_CACHE_TTL = 60  # seconds
+
+
+def _get_cached(step_id: str):
+    """Return cached result if still fresh, else None."""
+    entry = _STEP_CACHE.get(step_id)
+    if entry:
+        ts, result = entry
+        if time.monotonic() - ts < _STEP_CACHE_TTL:
+            return result
+    return None
+
+
+def _set_cached(step_id: str, result: list):
+    _STEP_CACHE[step_id] = (time.monotonic(), result)
+
 
 class SystemScanner:
     def __init__(self):
@@ -59,7 +78,18 @@ class SystemScanner:
         ]
 
     def run_step(self, step_id: str) -> List[Dict[str, Any]]:
-        """Run a single scanning step by ID."""
+        """Run a single scanning step by ID. Uses TTL cache for expensive steps."""
+        # Return cached result if fresh
+        cached = _get_cached(step_id)
+        if cached is not None:
+            # Still apply resolved_types filter on cached results
+            res = cached
+            if hasattr(self, "resolved_types") and self.resolved_types:
+                res = [x for x in res if x.get("type") not in self.resolved_types and x.get("recipe_hint") not in self.resolved_types]
+            res_types = {x["type"] for x in res}
+            self.latest_issues = [x for x in self.latest_issues if x["type"] not in res_types and x["type"] not in self.resolved_types] + res
+            return res
+
         res = []
         if step_id == "memory":
             res = self._check_memory()
@@ -83,7 +113,10 @@ class SystemScanner:
             res = self._check_system_updates()
         elif step_id == "dev_tools":
             res = self._check_python() + self._check_docker()
-            
+
+        # Cache the raw result before filtering
+        _set_cached(step_id, res)
+
         # Filter out resolved types/hints
         if hasattr(self, "resolved_types") and self.resolved_types:
             res = [x for x in res if x.get("type") not in self.resolved_types and x.get("recipe_hint") not in self.resolved_types]
@@ -108,7 +141,7 @@ class SystemScanner:
             elif platform.system() == "Windows":
                 issues += self._check_windows_update()
                 issues += self._check_windows_drivers()
-        
+
         if dev:
             issues += self._check_python()
             issues += self._check_node()
@@ -116,7 +149,7 @@ class SystemScanner:
             issues += self._check_docker()
             issues += self._check_java()
             issues += self._check_vscode()
-            
+
         if hasattr(self, "resolved_types") and self.resolved_types:
             issues = [x for x in issues if x.get("type") not in self.resolved_types and x.get("recipe_hint") not in self.resolved_types]
 
@@ -124,7 +157,7 @@ class SystemScanner:
         self.latest_issues = issues
         return issues
 
-    # â”€â”€ Hardware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Hardware ──────────────────────────────────────────────────────────────
     def _check_memory(self) -> list:
         mem = psutil.virtual_memory()
         issues = []
@@ -149,57 +182,70 @@ class SystemScanner:
 
     def _check_disk(self) -> list:
         issues = []
-        root = "/" if platform.system() != "Windows" else "C:\\"
         try:
-            disk = psutil.disk_usage(root)
-            free_gb = disk.free / 1024**3
-            if free_gb < 5:
-                issues.append({
-                    "type": "disk",
-                    "severity": SEVERITY_HIGH,
-                    "title": "Critical: Low Disk Space",
-                    "detail": f"Only {free_gb:.1f} GB free on main drive.",
-                    "recipe_hint": "clear_temp",
-                })
-            elif free_gb < 15:
-                issues.append({
-                    "type": "disk",
-                    "severity": SEVERITY_MEDIUM,
-                    "title": "Low Disk Space",
-                    "detail": f"{free_gb:.1f} GB free on main drive.",
-                    "recipe_hint": "clear_temp",
-                })
+            partitions = psutil.disk_partitions(all=False)
+            for p in partitions:
+                try:
+                    usage = psutil.disk_usage(p.mountpoint)
+                    pct = usage.percent
+                    free_gb = usage.free / 1024**3
+                    if pct >= 95:
+                        issues.append({
+                            "type": f"disk_full_{p.device.replace(':', '').replace('\\', '').replace('/', '')}",
+                            "severity": SEVERITY_HIGH,
+                            "title": f"Critical: Disk Almost Full ({p.mountpoint})",
+                            "detail": f"Drive {p.mountpoint} is {pct:.0f}% full ({free_gb:.1f} GB free). System may become unstable.",
+                            "recipe_hint": "free_disk_space",
+                        })
+                    elif pct >= 85:
+                        issues.append({
+                            "type": f"disk_low_{p.device.replace(':', '').replace('\\', '').replace('/', '')}",
+                            "severity": SEVERITY_MEDIUM,
+                            "title": f"Low Disk Space ({p.mountpoint})",
+                            "detail": f"Drive {p.mountpoint} is {pct:.0f}% full ({free_gb:.1f} GB free).",
+                            "recipe_hint": "free_disk_space",
+                        })
+                except (PermissionError, OSError):
+                    pass
         except Exception:
             pass
         return issues
 
     def _check_cpu(self) -> list:
         issues = []
-        cpu = psutil.cpu_percent(interval=0.5)
-        if cpu > 90:
-            issues.append({
-                "type": "cpu",
-                "severity": SEVERITY_HIGH,
-                "title": "CPU Overloaded",
-                "detail": f"CPU usage at {cpu}%. Check for runaway processes.",
-                "recipe_hint": None,
-            })
+        try:
+            # Use a short interval (0.1s) instead of blocking for 1s
+            cpu_pct = psutil.cpu_percent(interval=0.1)
+            if cpu_pct > 95:
+                issues.append({
+                    "type": "cpu_critical",
+                    "severity": SEVERITY_HIGH,
+                    "title": "Critical CPU Load",
+                    "detail": f"CPU usage is at {cpu_pct:.0f}%. System responsiveness severely impacted.",
+                    "recipe_hint": "cpu_usage",
+                })
+            elif cpu_pct > 80:
+                issues.append({
+                    "type": "cpu_high",
+                    "severity": SEVERITY_MEDIUM,
+                    "title": "High CPU Usage",
+                    "detail": f"CPU usage is at {cpu_pct:.0f}%. Consider closing heavy applications.",
+                    "recipe_hint": "cpu_usage",
+                })
+        except Exception:
+            pass
         return issues
 
-    # â”€â”€ OS-Aware Repository Scanning â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _check_repositories(self) -> list:
         issues = []
         sys_name = platform.system()
-        
+
         if sys_name == "Linux":
-            # OS aware: check Debian/Ubuntu source lists
             sources_path = Path("/etc/apt/sources.list")
             sources_dir = Path("/etc/apt/sources.list.d")
-            
-            # Simple check for locks or configuration issues
+
             try:
-                # Run apt-get check to detect lock-frontend or package manager corruptions
-                res = _safe_run(["apt-get", "check"], capture_output=True, text=True, timeout=5)
+                res = _safe_run(["apt-get", "check"], timeout=4)
                 if res.returncode != 0:
                     err = res.stderr.lower()
                     if "permission denied" not in err and "are you root" not in err:
@@ -212,8 +258,7 @@ class SystemScanner:
                         })
             except Exception:
                 pass
-                
-            # Verify expired GPG signing keys or unreachable mirrors
+
             if sources_path.exists():
                 try:
                     content = sources_path.read_text(encoding="utf-8", errors="ignore")
@@ -229,10 +274,10 @@ class SystemScanner:
                     pass
 
         elif sys_name == "Windows":
-            # Check winget source list integrity
             if shutil.which("winget"):
                 try:
-                    res = _safe_run(["winget", "source", "list"], capture_output=True, text=True, timeout=6)
+                    # Reduced timeout: winget source list can be slow on first run
+                    res = _safe_run(["winget", "source", "list"], timeout=4)
                     if res.returncode != 0 or "failed" in res.stdout.lower() or "unhealthy" in res.stdout.lower():
                         issues.append({
                             "type": "repository",
@@ -246,7 +291,7 @@ class SystemScanner:
         elif sys_name == "Darwin":
             if shutil.which("brew"):
                 try:
-                    res = _safe_run(["brew", "doctor"], capture_output=True, text=True, timeout=10)
+                    res = _safe_run(["brew", "doctor"], timeout=8)
                     if "error" in res.stdout.lower() or res.returncode != 0:
                         issues.append({
                             "type": "repository",
@@ -263,9 +308,7 @@ class SystemScanner:
         issues = []
         if platform.system() == "Linux":
             try:
-                # Check for updates with a simulated dry-run
-                res = _safe_run(["apt-get", "-s", "upgrade"], capture_output=True, text=True, timeout=5)
-                # Count lines with packages
+                res = _safe_run(["apt-get", "-s", "upgrade"], timeout=5)
                 match = re.search(r'(\d+)\s+upgraded,\s+(\d+)\s+newly\s+installed', res.stdout)
                 if match:
                     upgraded = int(match.group(1))
@@ -281,13 +324,18 @@ class SystemScanner:
                 pass
         return issues
 
-    # â”€â”€ Windows Update & Platform Checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Windows Update & Platform Checks ──────────────────────────────────────
     def _check_windows_update(self) -> list:
         issues = []
         if platform.system() != "Windows":
             return issues
         try:
-            res = _safe_run(["powershell", "-Command", "Get-Service wuauserv | Select-Object -ExpandProperty Status"], capture_output=True, text=True, timeout=5)
+            # Use -NoProfile -NonInteractive to reduce PowerShell startup overhead (~3-4s saved)
+            res = _safe_run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                 "Get-Service wuauserv | Select-Object -ExpandProperty Status"],
+                timeout=4
+            )
             status = res.stdout.strip()
             if "Running" not in status:
                 issues.append({
@@ -306,7 +354,12 @@ class SystemScanner:
         if platform.system() != "Windows":
             return issues
         try:
-            res = _safe_run(["powershell", "-Command", "Get-PnpDevice -Status Error | Select-Object -ExpandProperty FriendlyName"], capture_output=True, text=True, timeout=6)
+            # -NoProfile -NonInteractive cuts PowerShell cold-start from ~5s to ~1s
+            res = _safe_run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                 "Get-PnpDevice -Status Error | Select-Object -ExpandProperty FriendlyName"],
+                timeout=4
+            )
             devices = [d.strip() for d in res.stdout.splitlines() if d.strip()]
             if devices:
                 issues.append({
@@ -320,7 +373,7 @@ class SystemScanner:
             pass
         return issues
 
-    # â”€â”€ Developer Tools â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Developer Tools ───────────────────────────────────────────────────────
     def _check_python(self) -> list:
         issues = []
         py = shutil.which("python") or shutil.which("python3")
@@ -344,23 +397,18 @@ class SystemScanner:
         issues = []
         if not shutil.which("docker"):
             return []
-        else:
-            try:
-                result = _safe_run(
-                    ["docker", "info"],
-                    capture_output=True,
-                    timeout=5,
-                )
-                if result.returncode != 0:
-                    issues.append({
-                        "type": "docker_stopped",
-                        "severity": SEVERITY_MEDIUM,
-                        "title": "Docker Daemon Not Running",
-                        "detail": "Docker is installed but the daemon is not running.",
-                        "recipe_hint": "Docker service stopped",
-                    })
-            except Exception:
-                pass
+        try:
+            result = _safe_run(["docker", "info"], timeout=4)
+            if result.returncode != 0:
+                issues.append({
+                    "type": "docker_stopped",
+                    "severity": SEVERITY_MEDIUM,
+                    "title": "Docker Daemon Not Running",
+                    "detail": "Docker is installed but the daemon is not running.",
+                    "recipe_hint": "Docker service stopped",
+                })
+        except Exception:
+            pass
         return issues
 
     def _check_java(self) -> list:
@@ -371,11 +419,9 @@ class SystemScanner:
 
     def _check_linux_services(self) -> list:
         issues = []
-        # Query failed systemd services
         try:
-            res = _safe_run(["systemctl", "--failed", "--type=service", "--quiet"], capture_output=True, text=True, timeout=5)
-            # Or run list-units
-            res_list = _safe_run(["systemctl", "list-units", "--state=failed", "--type=service", "--no-legend"], capture_output=True, text=True, timeout=5)
+            res = _safe_run(["systemctl", "--failed", "--type=service", "--quiet"], timeout=4)
+            res_list = _safe_run(["systemctl", "list-units", "--state=failed", "--type=service", "--no-legend"], timeout=4)
             failed_lines = [l.strip() for l in res_list.stdout.splitlines() if l.strip()]
             for line in failed_lines:
                 svc_name = line.split()[0]
@@ -388,18 +434,13 @@ class SystemScanner:
                 })
         except Exception:
             pass
-            
+
         services = ["cron", "NetworkManager"]
         for svc in services:
             try:
-                result = _safe_run(
-                    ["systemctl", "is-active", svc],
-                    capture_output=True,
-                    timeout=5,
-                )
-                status = result.stdout.decode().strip()
+                result = _safe_run(["systemctl", "is-active", svc], timeout=3)
+                status = result.stdout.strip()
                 if status not in ("active",):
-                    # Check if already added in failed units
                     if not any(f"service_failed_{svc}" in issue["type"] for issue in issues):
                         issues.append({
                             "type": f"service_{svc}",
@@ -416,22 +457,22 @@ class SystemScanner:
         issues = []
         if platform.system() != "Linux":
             return issues
-        
+
         try:
             lspci_cmd = "lspci -nn | grep -i -E 'vga|3d|display'"
-            gpu_res = _safe_run(lspci_cmd, shell=True, capture_output=True, text=True)
+            gpu_res = _safe_run(lspci_cmd, shell=True, timeout=4)
             has_nvidia = "nvidia" in gpu_res.stdout.lower() or "geforce" in gpu_res.stdout.lower()
-            
-            lsmod_res = _safe_run("lsmod | grep nouveau", shell=True, capture_output=True, text=True)
+
+            lsmod_res = _safe_run("lsmod | grep nouveau", shell=True, timeout=3)
             using_nouveau = "nouveau" in lsmod_res.stdout.lower()
-            
+
             nvidia_loaded = False
             try:
-                nvidia_res = _safe_run("lsmod | grep nvidia", shell=True, capture_output=True, text=True)
+                nvidia_res = _safe_run("lsmod | grep nvidia", shell=True, timeout=3)
                 nvidia_loaded = "nvidia" in nvidia_res.stdout.lower()
             except Exception:
                 pass
-            
+
             if has_nvidia and (using_nouveau or not nvidia_loaded):
                 issues.append({
                     "type": "gpu_drivers",
@@ -443,4 +484,3 @@ class SystemScanner:
         except Exception:
             pass
         return issues
-

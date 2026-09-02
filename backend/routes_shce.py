@@ -9,6 +9,7 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from shce_engine import shce, mutation_engine, error_intelligence_db, env_profiler, DB_PATH
@@ -196,6 +197,37 @@ def shce_approve(queue_id: int, req: ApproveQueueRequest = ApproveQueueRequest()
     return result
 
 
+@router.post("/api/shce/stream-approve/{queue_id}")
+def shce_stream_approve(queue_id: int, req: ApproveQueueRequest = ApproveQueueRequest()):
+    """Approve a queued fix and stream live terminal output and progress via SSE."""
+    from self_healing import SafetyClassificationLayer
+
+    item = error_intelligence_db.get_queue_item(queue_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Queue item {queue_id} not found")
+
+    cmd = item.get("selected_candidate", "")
+    if not cmd:
+        raise HTTPException(status_code=400, detail="No command selected for this item")
+
+    safety_class = SafetyClassificationLayer.classify(cmd)
+    if safety_class == "Blocked":
+        raise HTTPException(status_code=400, detail="Command blocked by safety layer")
+    if safety_class == "Dangerous" and not req.confirm_dangerous:
+        return {
+            "ok": False,
+            "requires_secondary_confirmation": True,
+            "message": f"Command classified as DANGEROUS: '{cmd}'. Send confirm_dangerous=true to proceed.",
+        }
+
+    def event_stream():
+        yield f"data: {json.dumps({'type': 'start', 'queue_id': queue_id, 'command': cmd})}\n\n"
+        for event in shce.stream_execute_queued_fix(queue_id):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @router.post("/api/shce/reject/{queue_id}")
 def shce_reject(queue_id: int, req: RejectQueueRequest = RejectQueueRequest()):
     """Reject and dismiss a queued fix."""
@@ -259,6 +291,21 @@ def shce_delete_bulk_resolved():
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
         cur.execute("DELETE FROM error_intelligence")
+        removed = cur.rowcount
+        conn.commit()
+        conn.close()
+        return {"ok": True, "removed": removed}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@router.delete("/api/shce/queue/clear-all")
+def shce_clear_queue():
+    """Clear all items from shce_queue."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM shce_queue")
         removed = cur.rowcount
         conn.commit()
         conn.close()

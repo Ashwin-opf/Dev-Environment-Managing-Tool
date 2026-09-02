@@ -709,8 +709,8 @@ class RepairEngine:
         exec_command = command
         is_windows = platform.system() == "Windows"
         
-        # Determine timeout
-        timeout = 1800 if command.strip().lower().startswith("ollama pull ") else 120
+        # High timeout (30 minutes) to support large app downloads (Python, Android Studio, SDKs) without false timeouts
+        timeout = 1800
         
         # Temp files for Windows elevation redirection
         temp_out_path = None
@@ -782,7 +782,7 @@ class RepairEngine:
             except Exception as e:
                 stderr = f"{stderr}\nError reading elevated output temp files: {e}".strip()
 
-        # â”€â”€ SHCE Hook: trigger repair pipeline on command failure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ──── SHCE Hook: trigger repair pipeline on command failure ──────────────
         if trigger_shce and rc != 0 and stderr:
             try:
                 from shce_engine import shce as _shce
@@ -796,6 +796,167 @@ class RepairEngine:
                 pass  # SHCE failure must never break the main execution path
 
         return stdout, stderr, rc
+
+    def stream_run(self, command: str, trigger_shce: bool = True, timeout: int = 1800):
+        """
+        Execute a command and yield real-time output events as a generator:
+        yield {"type": "log", "text": line, "stream": "stdout"|"stderr"}
+        yield {"type": "progress", "percent": int, "detail": str}
+        yield {"type": "done", "returncode": int, "stdout": full_stdout, "stderr": full_stderr, "ok": bool}
+        """
+        import os
+        import platform
+        import re
+        import shutil
+        import queue
+        import threading
+        import time
+
+        exec_command = command
+        is_windows = platform.system() == "Windows"
+        current_os = platform.system()
+
+        if current_os in ("Linux", "Darwin") and "sudo" in command.lower():
+            if os.name == "posix" and os.geteuid() == 0:
+                exec_command = re.sub(r"\bsudo\b\s*", "", command)
+            elif current_os == "Linux" and shutil.which("pkexec"):
+                cleaned = re.sub(r"\bsudo\b\s*", "", command)
+                exec_command = ["pkexec", "bash", "-c", cleaned]
+        elif is_windows and "sudo" in command.lower():
+            cleaned = re.sub(r"\bsudo\b\s*", "", command).strip()
+            exec_command = cleaned
+
+        is_shell = isinstance(exec_command, str)
+
+        try:
+            proc = subprocess.Popen(
+                exec_command,
+                shell=is_shell,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1
+            )
+        except Exception as e:
+            yield {"type": "log", "text": f"Process launch error: {e}", "stream": "stderr"}
+            yield {"type": "done", "returncode": 1, "stdout": "", "stderr": str(e), "ok": False}
+            return
+
+        out_lines = []
+        err_lines = []
+        q = queue.Queue()
+
+        def reader(pipe, stream_name):
+            try:
+                for line in iter(pipe.readline, ''):
+                    if not line:
+                        break
+                    q.put((stream_name, line))
+            except Exception:
+                pass
+            finally:
+                try:
+                    pipe.close()
+                except Exception:
+                    pass
+
+        t_out = threading.Thread(target=reader, args=(proc.stdout, "stdout"), daemon=True)
+        t_err = threading.Thread(target=reader, args=(proc.stderr, "stderr"), daemon=True)
+        t_out.start()
+        t_err.start()
+
+        start_time = time.time()
+        last_progress = 0
+
+        pct_regex = re.compile(r"(\b\d{1,3})%")
+        mb_regex = re.compile(r"([\d\.]+)\s*(?:MB|GB|KB)\s*/\s*([\d\.]+)\s*(MB|GB|KB)", re.IGNORECASE)
+
+        while True:
+            if time.time() - start_time > timeout:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                msg = f"\nCommand timed out after {timeout} seconds."
+                err_lines.append(msg)
+                yield {"type": "log", "text": msg, "stream": "stderr"}
+                break
+
+            try:
+                stream_name, line = q.get(timeout=0.08)
+                clean_line = line.rstrip("\r\n")
+                if clean_line:
+                    if stream_name == "stdout":
+                        out_lines.append(clean_line)
+                    else:
+                        err_lines.append(clean_line)
+
+                    yield {"type": "log", "text": clean_line, "stream": stream_name}
+
+                    pct_match = pct_regex.search(clean_line)
+                    if pct_match:
+                        try:
+                            val = int(pct_match.group(1))
+                            if 0 <= val <= 100 and val != last_progress:
+                                last_progress = val
+                                yield {"type": "progress", "percent": val, "detail": clean_line[:120]}
+                        except Exception:
+                            pass
+                    else:
+                        mb_match = mb_regex.search(clean_line)
+                        if mb_match:
+                            try:
+                                cur_val = float(mb_match.group(1))
+                                total_val = float(mb_match.group(2))
+                                if total_val > 0:
+                                    calc_pct = min(100, max(0, int((cur_val / total_val) * 100)))
+                                    if calc_pct != last_progress:
+                                        last_progress = calc_pct
+                                        yield {"type": "progress", "percent": calc_pct, "detail": clean_line[:120]}
+                            except Exception:
+                                pass
+
+            except queue.Empty:
+                if proc.poll() is not None:
+                    while not q.empty():
+                        try:
+                            stream_name, line = q.get_nowait()
+                            clean_line = line.rstrip("\r\n")
+                            if clean_line:
+                                if stream_name == "stdout":
+                                    out_lines.append(clean_line)
+                                else:
+                                    err_lines.append(clean_line)
+                                yield {"type": "log", "text": clean_line, "stream": stream_name}
+                        except Exception:
+                            break
+                    break
+
+        rc = proc.wait() if proc.poll() is not None else (124 if (time.time() - start_time > timeout) else proc.returncode)
+        full_stdout = "\n".join(out_lines)
+        full_stderr = "\n".join(err_lines)
+
+        if trigger_shce and rc != 0 and full_stderr:
+            try:
+                from shce_engine import shce as _shce
+                _shce.handle_failure(
+                    command=command,
+                    error=(full_stderr or "").strip()[:2000],
+                    source="repair_engine",
+                    auto_queue=True,
+                )
+            except Exception:
+                pass
+
+        yield {
+            "type": "done",
+            "returncode": rc,
+            "stdout": full_stdout,
+            "stderr": full_stderr,
+            "ok": rc == 0
+        }
 
 
 # â”€â”€ RepairCommandManager â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

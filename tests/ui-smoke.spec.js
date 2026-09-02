@@ -5,6 +5,7 @@ const path = require('path');
 
 test('core UI controls render and respond without real system execution', async () => {
   const launchOptions = {
+    headless: true,
     args: [
       '--allow-file-access-from-files',
       '--no-sandbox',
@@ -65,6 +66,26 @@ test('core UI controls render and respond without real system execution', async 
     }
     if (url.includes('/api/commands/actions')) {
       return json({ ok: true, actions: [] });
+    }
+    if (url.includes('/api/devtools/managed')) {
+      return json({
+        ok: true,
+        apps: [
+          {
+            app_id: 'git',
+            name: 'Git',
+            category: 'Developer Tools',
+            description: 'Fast, scalable, distributed revision control system.',
+            package_manager: 'apt',
+            installed_at: '2026-06-10T10:00:00Z',
+            update_command: 'sudo apt-get update && sudo apt-get install --only-upgrade -y git',
+            uninstall_command: 'sudo apt-get remove -y git'
+          }
+        ]
+      });
+    }
+    if (url.includes('/api/devtools/uninstall')) {
+      return json({ ok: true, app_id: 'git', name: 'Git', returncode: 0, stdout: 'Removed', stderr: '' });
     }
     if (url.includes('/api/devtools/extract')) {
       const postData = route.request().postData();
@@ -156,7 +177,7 @@ test('core UI controls render and respond without real system execution', async 
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('#sidebar');
 
-  for (const nav of ['dashboard', 'scan', 'optimize', 'devtools', 'drivers', 'terminal-ai', 'logs']) {
+  for (const nav of ['dashboard', 'scan', 'optimize', 'devtools', 'myapps', 'drivers', 'terminal-ai', 'logs']) {
     await page.click(`#nav-${nav}`);
     await expect(page.locator(`#view-${nav}`)).toHaveClass(/active/);
   }
@@ -328,6 +349,23 @@ test('DevTools dynamic search installer renders search-to-install card with slid
         affects: app
       });
     }
+    if (url.includes('/api/devtools/search-packages')) {
+      return json({
+        ok: true,
+        query: 'mysql',
+        count: 1,
+        results: [{
+          id: 'mysql-server',
+          name: 'MySQL Server',
+          version: '8.0',
+          source: 'apt',
+          manager: 'apt',
+          description: 'MySQL database server',
+          publisher: 'Oracle',
+          match_score: 95
+        }]
+      });
+    }
     if (url.includes('/api/devtools/suggest')) return json({ ok: true, suggestions: [] });
     return json({ ok: true });
   });
@@ -379,5 +417,91 @@ test('DevTools dynamic search installer renders search-to-install card with slid
 
   await browser.close();
 });
+
+// ── My Apps (Installed Apps & Real-time Updates) dedicated test ─────────────
+test('My Apps view renders installed apps and triggers real-time update and uninstall controls', async () => {
+  const launchOptions = {
+    headless: true,
+    args: [
+      '--allow-file-access-from-files',
+      '--no-sandbox', '--disable-setuid-sandbox', '--disable-seccomp-filter-sandbox',
+      '--disable-gpu-sandbox', '--disable-crash-reporter', '--disable-breakpad',
+    ],
+  };
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
+    launchOptions.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+  }
+
+  const browser = await chromium.launch(launchOptions);
+  const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  const appUrl = pathToFileURL(path.join(process.cwd(), 'frontend', 'index.html')).toString();
+
+  await page.addInitScript(() => {
+    window.electron = {
+      ipcRenderer: { invoke: async () => 'offline', on: () => {}, removeAllListeners: () => {} },
+    };
+  });
+
+  await page.route('http://127.0.0.1:8765/api/**', async route => {
+    const url = route.request().url();
+    const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+
+    if (url.includes('/api/sysinfo')) return json({ os: 'Linux', cpu_percent: 8, ram_used_gb: 4, ram_total_gb: 16, disk_used_gb: 120, disk_total_gb: 512 });
+    if (url.includes('/api/dashboard/resources')) return json({ ok: true, roots: [], apps: [] });
+    if (url.includes('/api/devtools/managed')) {
+      return json({
+        ok: true,
+        apps: [
+          {
+            app_id: 'git',
+            name: 'Git',
+            category: 'Developer Tools',
+            description: 'Fast, scalable, distributed revision control system.',
+            package_manager: 'apt',
+            installed_at: '2026-06-10T10:00:00Z',
+            update_command: 'sudo apt-get update && sudo apt-get install --only-upgrade -y git',
+            uninstall_command: 'sudo apt-get remove -y git'
+          }
+        ]
+      });
+    }
+    if (url.includes('/api/devtools/uninstall')) {
+      return json({ ok: true, app_id: 'git', name: 'Git', returncode: 0, stdout: 'Removed', stderr: '' });
+    }
+    return json({ ok: true });
+  });
+
+  await page.goto(appUrl);
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForSelector('#sidebar');
+
+  // Navigate to My Apps
+  await page.click('#nav-myapps');
+  await expect(page.locator('#view-myapps')).toHaveClass(/active/);
+  await expect(page.locator('#view-title')).toHaveText('My Apps');
+
+  // Verify stat summary tiles
+  await expect(page.locator('#myapps-stat-total')).toHaveText('1');
+  await expect(page.locator('#myapps-stat-up-to-date')).toHaveText('All Ready');
+
+  // Verify app card renders with unified tool-card structure
+  const myAppCard = page.locator('#myapp-card-git');
+  await expect(myAppCard).toBeVisible();
+  await expect(myAppCard.locator('.tool-card-name')).toHaveText('Git');
+  await expect(myAppCard.locator('#myapp-badge-git')).toContainText('Installed');
+  await expect(myAppCard.locator('#myapp-updbtn-git')).toBeVisible();
+  await expect(myAppCard.locator('#myapp-uninbtn-git')).toBeVisible();
+
+  // Test search filtering in My Apps
+  await page.fill('#myapps-search-input', 'Git');
+  await expect(myAppCard).toBeVisible();
+  await page.fill('#myapps-search-input', 'NonExistentApp123');
+  await expect(myAppCard).not.toBeVisible();
+  await page.fill('#myapps-search-input', '');
+  await expect(myAppCard).toBeVisible();
+
+  await browser.close();
+});
+
 
 

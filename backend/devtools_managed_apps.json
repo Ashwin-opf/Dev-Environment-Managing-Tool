@@ -1,14 +1,1 @@
-[
-  {
-    "app_id": "java",
-    "name": "Java",
-    "install_command": "winget install --id Oracle.JDK.21 --exact --silent",
-    "update_command": "winget upgrade --id java --exact --silent",
-    "uninstall_command": "winget uninstall --id java --exact --silent",
-    "package_manager": "winget",
-    "category": "Developer Tools",
-    "description": "Installs JDK 21 via Winget.",
-    "installation_date": "2026-06-25T02:26:14.384726+00:00",
-    "auto_managed": true
-  }
-]
+[]

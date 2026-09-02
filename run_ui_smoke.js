@@ -65,6 +65,50 @@ const path = require('path');
     if (url.includes('/api/scan')) return json({ ok: true, issues: [{ severity: 'low', title: 'Git missing', detail: 'Git is unavailable', recipe_hint: 'Git missing' }] });
     if (url.includes('/api/execute')) return json({ ok: true, stdout: 'ok', stderr: '', returncode: 0 });
     if (url.includes('/api/drivers')) return json({ ok: true, gpu: 'Integrated', recommendations: [] });
+    if (url.includes('/api/devtools/managed')) {
+      return json({
+        ok: true,
+        apps: [
+          {
+            app_id: 'git',
+            name: 'Git',
+            category: 'Developer Tools',
+            description: 'Fast, scalable, distributed revision control system.',
+            package_manager: 'apt',
+            installed_at: '2026-06-10T10:00:00Z',
+            update_command: 'sudo apt-get update && sudo apt-get install --only-upgrade -y git',
+            uninstall_command: 'sudo apt-get remove -y git'
+          }
+        ]
+      });
+    }
+    if (url.includes('/api/devtools/resolve')) {
+      return json({
+        ok: true,
+        status: 'auto_selected',
+        confidence: 95.0,
+        from_cache: false,
+        source_used: 'winget',
+        install_cmd: 'winget install VideoLAN.VLC',
+        selected: {
+          pkg_id: 'VideoLAN.VLC',
+          name: 'VLC media player',
+          version: '3.0.20',
+          manager: 'winget',
+          source: 'winget',
+          publisher: 'VideoLAN',
+          homepage: 'https://www.videolan.org',
+          description: 'VLC is a free and open source cross-platform multimedia player.',
+          fuzzy_score: 95.0,
+          trust_score: 100.0,
+          total_score: 95.0,
+          variant_tags: [],
+          verified: true,
+          install_cmd: 'winget install VideoLAN.VLC'
+        },
+        candidates: []
+      });
+    }
     if (url.includes('/api/devtools/suggest')) return json({ ok: true, suggestions: [ { app: 'Poetry', trigger_app: 'Python', category: 'Dependency Manager', description: 'Premium Python dependency manager using pyproject.toml.', icon: '🐍' }, { app: 'pnpm', trigger_app: 'Node.js', category: 'Package Manager', description: 'Faster and more efficient Node package installs.', icon: '📦' } ] });
     if (url.includes('/api/devtools/extract')) return json({ ok: true, title: 'Install Poetry', command: 'curl -sSL https://install.python-poetry.org | python3 -', purpose: 'Install Poetry from the official installer.', affects: 'Python toolchain' });
     if (url.includes('/api/ai_agent')) return json({ ok: true, response: 'Check Git:\n```bash\ngit --version\n```' });
@@ -79,39 +123,47 @@ const path = require('path');
   });
 
   try {
+    console.log('Navigating to appUrl:', appUrl);
     await page.goto(appUrl);
     await page.waitForSelector('#sidebar');
+    console.log('Sidebar loaded');
 
-    const navs = ['dashboard', 'scan', 'repair', 'optimize', 'devtools', 'drivers', 'terminal-ai', 'logs'];
+    const navs = ['dashboard', 'scan', 'optimize', 'devtools', 'myapps', 'drivers', 'terminal-ai', 'logs', 'control-center'];
     for (const nav of navs) {
+      console.log('Clicking nav:', nav);
       await page.click(`#nav-${nav}`);
-      const className = await page.$eval(`#view-${nav}`, el => el.className);
-      if (!/active/.test(className)) throw new Error(`View ${nav} not active`);
+      await page.waitForSelector(`#view-${nav === 'control-center' ? 'control-center' : nav}.active`, { timeout: 3000 });
     }
+    console.log('All views activated successfully');
 
-    await page.click('#nav-repair');
-    await page.waitForSelector('#recipe-list .recipe-card');
-    const count = await page.$$eval('#recipe-list .recipe-card', els => els.length);
-    if (count !== 2) throw new Error('Expected 2 recipe cards');
+    // Verify My Apps View
+    console.log('Testing My Apps view assertions...');
+    await page.click('#nav-myapps');
+    await page.waitForSelector('#myapps-grid .store-tool-card.myapp-card', { timeout: 4000 });
+    const myAppTitle = await page.$eval('#myapps-grid .tool-card-name', el => el.textContent.trim());
+    console.log('My Apps found card:', myAppTitle);
+    if (myAppTitle !== 'Git') throw new Error(`Expected Git in My Apps, got ${myAppTitle}`);
+    const statTotal = await page.$eval('#myapps-stat-total', el => el.textContent.trim());
+    if (statTotal !== '1') throw new Error(`Expected total 1, got ${statTotal}`);
 
-    await page.click('#recipe-list .action-btn');
-    await page.waitForSelector('#modal-overlay');
-    const modalCmd = await page.$eval('#modal-command', el => el.textContent || el.innerText);
-    if (!modalCmd.includes('sudo apt-get install -y git')) throw new Error('Modal command missing git install');
-    await page.click('.btn-cancel');
-
-    await page.fill('#repair-search', 'temp');
-    const afterCount = await page.$$eval('#recipe-list .recipe-card', els => els.length);
-    if (afterCount !== 1) throw new Error('Search filtering failed');
+    // Test search filter in My Apps
+    console.log('Testing search filter in My Apps...');
+    await page.fill('#myapps-search-input', 'Git');
+    const visibleCount = await page.$$eval('#myapps-grid .store-tool-card.myapp-card', els => els.filter(e => e.style.display !== 'none').length);
+    if (visibleCount !== 1) throw new Error('Search filtering for Git failed');
+    await page.fill('#myapps-search-input', 'NonExistentApp123');
+    const emptyVisible = await page.$eval('#myapps-empty', el => !el.classList.contains('hidden'));
+    if (!emptyVisible) throw new Error('Empty state should show for non-existent app');
+    await page.fill('#myapps-search-input', '');
+    console.log('My Apps checks passed!');
 
     await page.click('#nav-logs');
-    await page.click('#view-logs .primary-btn');
     await page.waitForFunction(() => {
-      const el = document.querySelector('#log-box');
+      const el = document.querySelector('#log-list');
       return el && el.textContent && !el.textContent.includes('Loading');
     }, { timeout: 5000 });
-    const logsText = await page.$eval('#log-box', el => el.textContent || '');
-    console.log('LOGS TEXT START\n' + logsText + '\nLOGS TEXT END');
+    const logsText = await page.$eval('#log-list', el => el.textContent || '');
+    console.log('LOGS TEXT:', logsText);
     if (!logsText.includes('newer command')) throw new Error('Logs missing newer command');
 
     await page.click('#nav-terminal-ai');
@@ -124,15 +176,21 @@ const path = require('path');
     const target = ollamaButtons.find(t => t && t.includes('Pull phi3:mini')) || '';
     if (!target.includes('2.2') && !target.includes('~2.2')) throw new Error('Ollama quick btn size missing');
 
+    // Test DevTools Store & Live Search for new apps
     await page.click('#nav-devtools');
-    await page.waitForSelector('#devtools-suggestions');
-    await page.click('button:has-text("Refresh Suggestions")');
-    await page.waitForFunction(() => {
-      const container = document.querySelector('#devtools-suggestions');
-      return container && container.querySelectorAll('.module-card').length > 0;
-    }, { timeout: 5000 });
-    const suggestions = await page.$$eval('#devtools-suggestions .module-card', els => els.map(el => el.textContent || ''));
-    if (suggestions.length === 0) throw new Error('No devtools suggestions rendered');
+    await page.waitForSelector('.store-tool-card', { timeout: 5000 });
+    const storeCards = await page.$$eval('.store-tool-card', els => els.length);
+    console.log('DevTools Store rendered tool cards count:', storeCards);
+    if (storeCards === 0) throw new Error('No devtools store cards rendered');
+
+    console.log('Testing live new app search in DevTools Store (vlc)...');
+    await page.fill('#devtools-search', 'vlc');
+    await page.waitForSelector('#pkg-search-panel', { timeout: 4000 });
+    await page.waitForSelector('#pkg-search-results div', { timeout: 6000 });
+    const foundPkg = await page.$eval('#pkg-search-results', el => el.textContent);
+    console.log('Live package search result:', foundPkg);
+    if (!foundPkg.includes('VLC media player')) throw new Error('Expected VLC in live package search results');
+    await page.fill('#devtools-search', '');
 
     console.log('UI smoke checks passed');
     await browser.close();

@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "description": "PC Doctor — Intelligent System Repair",
   "scripts": {
-    "setup":  "node scripts/setup.js",
-    "start":  "node scripts/start.js",
-    "tauri":  "tauri",
-    "dev":    "node scripts/dev.js",
-    "build":  "tauri build",
-    "test":   "playwright test"
+    "setup":     "node scripts/setup.js",
+    "start":     "node scripts/start.js",
+    "shortcut":  "node scripts/create_shortcut.js",
+    "tauri":     "tauri",
+    "tauri:dev": "node scripts/dev.js",
+    "dev":       "node scripts/dev.js",
+    "build":     "npm --prefix frontend run build && tauri build",
+    "test":      "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
