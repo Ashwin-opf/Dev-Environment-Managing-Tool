@@ -283,6 +283,11 @@ class CanonicalIdentityStore:
                 user_system_scope="system",
                 expected_executable_path=r"C:\Program Files\Git\cmd\git.exe" if cur_os == "Windows" else "/usr/bin/git",
                 functional_probe_command=["git", "help"],
+                platform_overrides={
+                    "darwin": {"package_id": "git", "package_manager": "brew"},
+                    "linux": {"package_id": "git", "package_manager": "apt"},
+                    "windows": {"package_id": "Git.Git", "package_manager": "winget"},
+                },
             )
         )
 

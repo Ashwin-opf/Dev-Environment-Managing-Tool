@@ -580,7 +580,10 @@ class DevEnvironmentDetector:
                     if is_homebrew_active:
                         discovered_exes = [
                             p for p in discovered_exes
-                            if not Path(os.path.realpath(p)).as_posix().startswith("/usr/bin/")
+                            if not (
+                                str(p).startswith("/usr/bin/")
+                                or Path(os.path.realpath(p)).as_posix().startswith(("/usr/bin/", "/Library/Developer/CommandLineTools/"))
+                            )
                         ]
 
             distinct_roots = set()

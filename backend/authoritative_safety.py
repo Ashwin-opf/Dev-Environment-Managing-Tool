@@ -220,7 +220,7 @@ def is_natural_language_command(cmd: str) -> bool:
 
 def check_package_manager_available(pm_name: str) -> bool:
     """Verifies that the requested package manager executable exists on the system."""
-    if not pm_name or pm_name.lower() in ("native", "manual", "custom", "none", "unknown", "any"):
+    if not pm_name or pm_name.lower() in ("native", "manual", "custom", "none", "unknown", "any", "system"):
         return True
     pm = pm_name.lower().strip()
     known_pms = {"winget", "choco", "scoop", "apt", "apt-get", "dnf", "yum", "pacman", "brew", "snap", "flatpak", "port", "zypper"}
@@ -354,7 +354,7 @@ class AuthoritativeSafetyLayer:
 
     def _extract_pm(self, command: str, package_manager: Optional[str] = None) -> Optional[str]:
         """Infers the package manager invoked by the command or explicit metadata."""
-        if package_manager and package_manager.lower() not in ("native", "custom", "none", "unknown"):
+        if package_manager and package_manager.lower() not in ("native", "manual", "custom", "none", "unknown", "any", "system"):
             return package_manager.lower().strip()
         cmd_lower = command.strip().lower()
         for pm in ("winget", "choco", "scoop", "apt", "apt-get", "dnf", "yum", "pacman", "brew", "snap", "flatpak", "port", "zypper"):

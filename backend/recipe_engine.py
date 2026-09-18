@@ -395,7 +395,7 @@ class RecipeResolver:
             arguments=arguments,
             verification_command=list(identity.version_command),
             expected_result={"return_code": 0},
-            risk_base="Low" if operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY) else "Medium",
+            risk_base="Medium" if operation in (RecipeOperation.UNINSTALL, RecipeOperation.REINSTALL) else "Low",
             official_url=identity.official_url,
             source="STATIC_DB",
             supported_environment={"os": current_os},

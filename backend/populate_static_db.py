@@ -500,6 +500,24 @@ RECIPES = [
         "tags": "git,vcs,linux,install"
     },
     {
+        "issue": "Git missing",
+        "os": "Darwin",
+        "category": "Version Control",
+        "command": "brew install git",
+        "risk": "Low",
+        "explanation": "Installs Git on macOS via Homebrew.",
+        "tags": "git,vcs,brew,macos,install"
+    },
+    {
+        "issue": "Git environment corrupted or broken",
+        "os": "Darwin",
+        "category": "Version Control",
+        "command": "brew reinstall git",
+        "risk": "Low",
+        "explanation": "Reinstalls Git on macOS via Homebrew to repair corrupted binaries.",
+        "tags": "git,repair,brew,macos"
+    },
+    {
         "issue": "Git Credential Manager corrupted or broken",
         "os": "Windows",
         "category": "Version Control",
