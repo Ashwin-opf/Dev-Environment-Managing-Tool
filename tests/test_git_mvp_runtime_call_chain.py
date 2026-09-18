@@ -34,6 +34,7 @@ Verification invariants enforced:
 
 import json
 import os
+import platform
 import sys
 import time
 import unittest
@@ -69,7 +70,8 @@ class TestGitMVPRuntimeCallChain(unittest.TestCase):
 
     def setUp(self):
         self.client = TestClient(app, headers={"Authorization": f"Bearer {API_TOKEN}"})
-        self.git_repair_cmd = 'setx PATH "%PATH%;C:\\Program Files\\Git\\cmd" /M'
+        cur_os = platform.system()
+        self.git_repair_cmd = 'export PATH="$PATH:/usr/bin"' if cur_os != "Windows" else 'setx PATH "%PATH%;C:\\Program Files\\Git\\cmd" /M'
 
     def test_git_path_repair_authoritative_call_chain(self):
         call_chain: List[Dict[str, Any]] = []

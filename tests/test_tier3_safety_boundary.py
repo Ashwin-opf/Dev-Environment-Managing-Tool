@@ -75,7 +75,7 @@ def _make_recipe(
     target: str = "git",
     source: str = "STATIC_DB",
     os_name: str = "Any",
-    package_manager: str = "winget",
+    package_manager: Optional[str] = None,
     risk: str = "Low",
 ) -> StructuredRecipe:
     if arguments is None:
@@ -85,6 +85,17 @@ def _make_recipe(
             arguments = parts[1:]
         else:
             arguments = []
+    if package_manager is None:
+        target_norm = os_name.lower().strip() if os_name else "any"
+        if target_norm in ("linux", "ubuntu", "debian", "fedora", "arch"):
+            package_manager = "apt"
+        elif target_norm in ("darwin", "macos", "mac"):
+            package_manager = "brew"
+        elif target_norm in ("windows", "win32"):
+            package_manager = "winget"
+        else:
+            cur_os = platform.system()
+            package_manager = "winget" if cur_os == "Windows" else ("brew" if cur_os == "Darwin" else "apt")
     return StructuredRecipe(
         recipe_id=f"rec_test_{target}",
         recipe_version=1,

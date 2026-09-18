@@ -137,16 +137,21 @@ def main():
         ElevationDiagnosticLogger.log("WORKER_VALIDATION_PASSED", pid=pid, application=app_name, state="PROBE_VALID")
         ElevationDiagnosticLogger.log("WORKER_OPERATION_STARTED", pid=pid, application=app_name, state="PROBE_RUNNING")
         try:
-            import winreg
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment", 0, winreg.KEY_READ) as key:
-                val, _ = winreg.QueryValueEx(key, "Path")
+            if sys.platform == "win32":
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment", 0, winreg.KEY_READ) as key:
+                    val, _ = winreg.QueryValueEx(key, "Path")
+                msg = "Elevation probe succeeded: successfully read Machine Environment registry."
+            else:
+                val = os.environ.get("PATH", "")
+                msg = "Elevation probe succeeded: successfully read environment PATH."
             ElevationDiagnosticLogger.log("WORKER_OPERATION_COMPLETED", pid=pid, application=app_name, state="PROBE_OK", elapsed_ms=(time.time()-t_start)*1000)
             write_result(result_path, {
                 "status": "EXECUTED",
                 "operation": operation,
                 "is_elevated": elevated,
                 "exit_code": 0,
-                "message": "Elevation probe succeeded: successfully read Machine Environment registry.",
+                "message": msg,
                 "path_length": len(val),
             })
             ElevationDiagnosticLogger.log("RESULT_FILE_CREATED", pid=pid, application=app_name, state="RESULT_WRITTEN", error_code=0)

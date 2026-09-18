@@ -286,7 +286,7 @@ class TestRepairEngineElevationFlow(unittest.TestCase):
 
     def test_anaconda_user_path_no_uac(self):
         """7. Anaconda User PATH repair does not request UAC (elevate=False)."""
-        cmd = 'powershell -NoProfile -Command "Write-Output CondaPathVerified"'
+        cmd = 'powershell -NoProfile -Command "Write-Output CondaPathVerified"' if sys.platform == "win32" else f'{sys.executable} -c "print(\'CondaPathVerified\')"'
         with patch.object(self.engine, "stream_elevated_operation") as mock_elev, \
              patch("dev_environment_detector.DevEnvironmentDetector.post_repair_verify", return_value={"verified": True, "message": "conda verified", "details": {}}):
             events = list(self.engine.stream_run(cmd, elevate=False, scope="USER", title="Anaconda"))

@@ -431,8 +431,10 @@ class TestExecutionPipelineConsolidation(unittest.TestCase):
         with patch.object(privilege_manager, "stream_elevated_operation", return_value=[declined_event]), \
              patch.object(structured_logger, "log_event") as mock_log:
 
+            cur_os = platform.system()
+            cmd = 'export PATH="$PATH:/usr/bin"' if cur_os != "Windows" else 'setx PATH "%PATH%;C:\\Program Files\\Git\\bin" /M'
             outcome = execution_engine.execute_command(
-                command='setx PATH "%PATH%;C:\\Program Files\\Git\\bin" /M',
+                command=cmd,
                 elevate=True,
                 scope="machine",
                 target="git",
@@ -560,7 +562,8 @@ class TestExecutionPipelineConsolidation(unittest.TestCase):
             )
 
             # 2. Live route called
-            git_repair_cmd = 'setx PATH "%PATH%;C:\\Program Files\\Git\\cmd" /M'
+            cur_os = platform.system()
+            git_repair_cmd = 'export PATH="$PATH:/usr/bin"' if cur_os != "Windows" else 'setx PATH "%PATH%;C:\\Program Files\\Git\\cmd" /M'
             resp = self.client.post(
                 "/api/execute-stream",
                 json={

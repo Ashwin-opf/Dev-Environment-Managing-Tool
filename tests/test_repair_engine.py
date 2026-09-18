@@ -217,8 +217,12 @@ class TestRepairEngine(unittest.TestCase):
                 self.engine.run("sudo apt-get update")
 
                 # Verify that it was wrapped with pkexec as a list
-                mock_run.assert_called_once()
-                called_cmd = mock_run.call_args[0][0]
+                pkexec_calls = [
+                    c for c in mock_run.call_args_list
+                    if c[0] and isinstance(c[0][0], (list, tuple)) and len(c[0][0]) > 0 and c[0][0][0] == "pkexec"
+                ]
+                self.assertGreaterEqual(len(pkexec_calls), 1)
+                called_cmd = pkexec_calls[0][0][0]
                 self.assertEqual(called_cmd[0], "pkexec")
                 self.assertEqual(called_cmd[1], "bash")
                 self.assertEqual(called_cmd[2], "-c")

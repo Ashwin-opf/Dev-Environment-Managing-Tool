@@ -596,7 +596,7 @@ class DevEnvironmentDetector:
         if not in_persistent:
             scope_str = identity.install_scope.capitalize()
             if scope_str not in ("User", "Machine"):
-                scope_str = "User" if ("appdata" in primary_exe.lower() or "users" in primary_exe.lower()) else "Machine"
+                scope_str = "User" if ("appdata" in primary_exe.lower() or "users" in primary_exe.lower() or "/home/" in primary_exe.lower() or "~" in primary_exe) else "Machine"
             path_scope = PathScope.USER if scope_str.lower() == "user" else PathScope.MACHINE
             req_elev = (path_scope == PathScope.MACHINE and not is_process_elevated())
 

@@ -719,6 +719,9 @@ class RepairEngine:
         m = re.search(r"([A-Za-z]:\\[^;'\"]+)", command)
         if m:
             return m.group(1).rstrip("\\/")
+        m = re.search(r'export\s+PATH=.*:(/[^:"\'\s]+)', command)
+        if m:
+            return m.group(1).rstrip("/")
         return None
 
     def stream_elevated_operation(self, payload: dict, timeout: int = 60):

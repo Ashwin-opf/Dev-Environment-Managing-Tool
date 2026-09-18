@@ -67,22 +67,46 @@ class TestEffectivePath(unittest.TestCase):
         self.ep = EffectivePath()
 
     def test_normalize_path(self):
-        norm = self.ep.normalize_path(r"C:\Program Files\Git\cmd\\")
-        self.assertEqual(norm, r"c:\program files\git\cmd")
+        if sys.platform == "win32":
+            norm = self.ep.normalize_path(r"C:\Program Files\Git\cmd\\")
+            self.assertEqual(norm, r"c:\program files\git\cmd")
+        else:
+            norm = self.ep.normalize_path("/usr/local/bin//")
+            self.assertEqual(norm, "/usr/local/bin")
 
     def test_is_dir_in_persistent_path_mocked(self):
-        with patch.object(self.ep, "get_persistent_paths", return_value=[r"c:\program files\git\cmd", r"c:\windows\system32"]):
-            self.assertTrue(self.ep.is_dir_in_persistent_path(r"C:\Program Files\Git\cmd"))
-            self.assertTrue(self.ep.is_dir_in_persistent_path(r"C:\Program Files\Git\cmd\\"))
-            self.assertFalse(self.ep.is_dir_in_persistent_path(r"C:\NonExistent\bin"))
+        if sys.platform == "win32":
+            sample_paths = [r"c:\program files\git\cmd", r"c:\windows\system32"]
+            target = r"C:\Program Files\Git\cmd"
+            target_slash = r"C:\Program Files\Git\cmd\\"
+            non_existent = r"C:\NonExistent\bin"
+        else:
+            sample_paths = ["/usr/bin", "/usr/local/bin"]
+            target = "/usr/bin"
+            target_slash = "/usr/bin/"
+            non_existent = "/nonexistent/bin"
+
+        with patch.object(self.ep, "get_persistent_paths", return_value=sample_paths):
+            self.assertTrue(self.ep.is_dir_in_persistent_path(target))
+            self.assertTrue(self.ep.is_dir_in_persistent_path(target_slash))
+            self.assertFalse(self.ep.is_dir_in_persistent_path(non_existent))
 
     def test_persistent_vs_process_divergence(self):
         """Persistent PATH can lack an entry even if current process inherited it."""
-        with patch.object(self.ep, "get_persistent_paths", return_value=[r"c:\windows\system32"]):
-            with patch.object(self.ep, "get_process_paths", return_value=[r"c:\program files\git\cmd", r"c:\windows\system32"]):
+        if sys.platform == "win32":
+            persistent = [r"c:\windows\system32"]
+            process = [r"c:\program files\git\cmd", r"c:\windows\system32"]
+            target = r"C:\Program Files\Git\cmd"
+        else:
+            persistent = ["/usr/bin"]
+            process = ["/usr/local/bin", "/usr/bin"]
+            target = "/usr/local/bin"
+
+        with patch.object(self.ep, "get_persistent_paths", return_value=persistent):
+            with patch.object(self.ep, "get_process_paths", return_value=process):
                 # In process, but not persistent!
-                self.assertFalse(self.ep.is_dir_in_persistent_path(r"C:\Program Files\Git\cmd"))
-                self.assertTrue(self.ep.is_dir_in_process_path(r"C:\Program Files\Git\cmd"))
+                self.assertFalse(self.ep.is_dir_in_persistent_path(target))
+                self.assertTrue(self.ep.is_dir_in_process_path(target))
 
 
 class TestToolHealthStatus16Statuses(unittest.TestCase):
@@ -122,11 +146,11 @@ class TestIssue1GitPathProblem(unittest.TestCase):
         self.detector = DevEnvironmentDetector()
 
     def test_git_installed_but_path_missing(self):
-        fake_git_exe = r"C:\Program Files\Git\cmd\git.exe"
+        fake_git_exe = r"C:\Program Files\Git\cmd\git.exe" if sys.platform == "win32" else "/opt/git/bin/git"
 
         # Mock: binary is discovered on disk
         with patch.object(self.detector, "discover_executable", return_value=[fake_git_exe]):
-            # Mock: persistent PATH does NOT contain C:\Program Files\Git\cmd
+            # Mock: persistent PATH does NOT contain git parent directory
             with patch.object(self.detector.effective_path, "is_dir_in_persistent_path", return_value=False):
                 with patch.object(self.detector.effective_path, "is_dir_in_process_path", return_value=True):
                     diag = self.detector.diagnose_tool("git")
@@ -137,11 +161,14 @@ class TestIssue1GitPathProblem(unittest.TestCase):
                     self.assertFalse(diag.in_effective_path)
                     self.assertIn("missing from the system/user PATH", diag.diagnosis_message)
                     self.assertIsNotNone(diag.repair_command)
-                    self.assertIn("SetEnvironmentVariable", diag.repair_command)
-                    self.assertIn("Git", diag.repair_command)
+                    if sys.platform == "win32":
+                        self.assertIn("SetEnvironmentVariable", diag.repair_command)
+                        self.assertIn("Git", diag.repair_command)
+                    else:
+                        self.assertIn("export PATH", diag.repair_command)
 
     def test_git_installed_and_usable_when_in_persistent_path(self):
-        fake_git_exe = r"C:\Program Files\Git\cmd\git.exe"
+        fake_git_exe = r"C:\Program Files\Git\cmd\git.exe" if sys.platform == "win32" else "/opt/git/bin/git"
 
         with patch.object(self.detector, "discover_executable", return_value=[fake_git_exe]):
             with patch.object(self.detector.effective_path, "is_dir_in_persistent_path", return_value=True):
@@ -155,7 +182,7 @@ class TestIssue1GitPathProblem(unittest.TestCase):
 
     def test_python_and_node_path_missing_generalization(self):
         """Ensures the exact same mechanism detects Node.js and Python PATH problems."""
-        fake_node_exe = r"C:\Program Files\nodejs\node.exe"
+        fake_node_exe = r"C:\Program Files\nodejs\node.exe" if sys.platform == "win32" else "/opt/nodejs/bin/node"
         with patch.object(self.detector, "discover_executable", return_value=[fake_node_exe]):
             with patch.object(self.detector.effective_path, "is_dir_in_persistent_path", return_value=False):
                 diag = self.detector.diagnose_tool("nodejs")
@@ -278,6 +305,7 @@ class TestActiveProblemsAndRepairIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(git_probs[0]["auto_implement"])
                 self.assertEqual(git_probs[0]["command"], mock_diag.repair_command)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows Update service wuauserv active problem test")
     async def test_get_active_repair_problems_clears_resolved_service(self):
         from routes_system import get_active_repair_problems
         from scanner import scanner

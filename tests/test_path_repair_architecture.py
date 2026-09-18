@@ -38,6 +38,7 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 from canonical_identity import CanonicalIdentity, canonical_store
+from platform_abstraction.platform_provider import get_path_manager
 from dev_environment_detector import (
     DevEnvironmentDetector,
     EffectivePath,
@@ -65,31 +66,58 @@ class TestPathModelAndSafety(unittest.TestCase):
 
     def test_g_path_already_contains_directory_no_duplicate(self):
         """Test G: Directory already in PATH should return modified=False / already present."""
-        with patch.object(EffectivePath, "get_machine_path", return_value=[r"C:\Windows\System32", r"C:\Program Files\Git\cmd"]), \
+        if sys.platform == "win32":
+            sample_paths = [r"C:\Windows\System32", r"C:\Program Files\Git\cmd"]
+            target = r"C:\Program Files\Git\cmd"
+        else:
+            sample_paths = ["/usr/bin", "/usr/local/bin"]
+            target = "/usr/local/bin"
+
+        with patch.object(get_path_manager(), "get_path_entries", return_value=sample_paths), \
+             patch.object(EffectivePath, "get_machine_path", return_value=sample_paths), \
              patch.object(EffectivePath, "is_dir_in_persistent_path", return_value=True):
-            res = EffectivePath.repair_path_entry(r"C:\Program Files\Git\cmd", scope=PathScope.MACHINE)
+            res = EffectivePath.repair_path_entry(target, scope=PathScope.MACHINE)
             self.assertEqual(res.status, "ALREADY_PRESENT")
             self.assertIn("already", res.message.lower())
 
     def test_h_casing_and_trailing_slash_normalization(self):
         """Test H: Different casing and trailing slashes are recognized as existing."""
-        with patch.object(EffectivePath, "get_machine_path", return_value=["C:\\Windows\\System32", "c:\\program files\\git\\cmd\\"]), \
+        if sys.platform == "win32":
+            sample_paths = ["C:\\Windows\\System32", "c:\\program files\\git\\cmd\\"]
+            target = "C:\\Program Files\\Git\\cmd"
+        else:
+            sample_paths = ["/usr/bin", "/usr/local/bin/"]
+            target = "/usr/local/bin"
+
+        with patch.object(get_path_manager(), "get_path_entries", return_value=sample_paths), \
+             patch.object(EffectivePath, "get_machine_path", return_value=sample_paths), \
              patch.object(EffectivePath, "is_dir_in_persistent_path", return_value=True):
-            res = EffectivePath.repair_path_entry("C:\\Program Files\\Git\\cmd", scope=PathScope.MACHINE)
+            res = EffectivePath.repair_path_entry(target, scope=PathScope.MACHINE)
             self.assertEqual(res.status, "ALREADY_PRESENT")
             self.assertIn("already", res.message.lower())
 
     def test_i_all_existing_entries_preserved(self):
-        """Test I: Existing PATH entries A;B;C are preserved when adding D -> A;B;C;D."""
-        raw_existing = r"C:\Windows\System32;C:\Windows;C:\Tools\bin"
+        """Test I: Existing PATH entries A;B;C (or A:B:C) are preserved when adding D -> A;B;C;D."""
+        if sys.platform == "win32":
+            raw_existing = r"C:\Windows\System32;C:\Windows;C:\Tools\bin"
+            new_target = r"C:\Program Files\Git\cmd"
+            first_entry = r"C:\Windows\System32"
+            second_entry = r"C:\Windows"
+            third_entry = r"C:\Tools\bin"
+        else:
+            raw_existing = "/usr/bin:/usr/local/bin:/opt/bin"
+            new_target = "/usr/local/git/bin"
+            first_entry = "/usr/bin"
+            second_entry = "/usr/local/bin"
+            third_entry = "/opt/bin"
+
         entries = EffectivePath.parse_path_entries(raw_existing)
         self.assertEqual(len(entries), 3)
 
-        new_target = r"C:\Program Files\Git\cmd"
         combined = entries + [new_target]
-        self.assertEqual(combined[0], r"C:\Windows\System32")
-        self.assertEqual(combined[1], r"C:\Windows")
-        self.assertEqual(combined[2], r"C:\Tools\bin")
+        self.assertEqual(combined[0], first_entry)
+        self.assertEqual(combined[1], second_entry)
+        self.assertEqual(combined[2], third_entry)
         self.assertEqual(combined[3], new_target)
         self.assertEqual(len(combined), 4)
 
@@ -145,23 +173,27 @@ class TestTenMandatoryScenarios(unittest.TestCase):
 
     def test_2_git_machine_path_repair_elevation_and_verification(self):
         """TEST 2: Git Machine PATH repair -> UAC -> repair -> verification."""
-        git_exe = r"C:\Program Files\Git\cmd\git.exe"
+        git_exe = r"C:\Program Files\Git\cmd\git.exe" if sys.platform == "win32" else "/usr/bin/git"
+        git_dir = str(Path(git_exe).parent)
         with patch.object(self.detector, "discover_executable", return_value=[git_exe]), \
-             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Windows\System32"]), \
+             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Windows\System32" if sys.platform == "win32" else "/usr/local/bin"]), \
              patch.object(EffectivePath, "is_dir_in_process_path", return_value=False), \
              patch.object(EffectivePath, "is_dir_in_persistent_path", return_value=False), \
              patch("dev_environment_detector.is_process_elevated", return_value=False):
             diag = self.detector.diagnose_tool("git")
             self.assertTrue(diag.requires_elevation)
             self.assertEqual(diag.path_scope, "MACHINE")
-            self.assertIn("Machine", diag.repair_command)
+            if sys.platform == "win32":
+                self.assertIn("Machine", diag.repair_command)
+            else:
+                self.assertIn("export PATH", diag.repair_command)
 
             # Test elevated stream run
             fake_elev_res = {
                 "ok": True,
                 "status": "EXECUTED",
                 "exit_code": 0,
-                "message": "Added C:\\Program Files\\Git\\cmd to Machine PATH",
+                "message": f"Added {git_dir} to Machine PATH",
                 "operation": "REPAIR_PATH",
                 "scope": "MACHINE",
                 "application": "Git",
@@ -192,12 +224,12 @@ class TestTenMandatoryScenarios(unittest.TestCase):
                 payload_arg = mock_elev.call_args[0][0]
                 self.assertEqual(payload_arg["operation"], "REPAIR_PATH")
                 self.assertEqual(payload_arg["scope"], "MACHINE")
-                self.assertEqual(payload_arg["directory"], r"C:\Program Files\Git\cmd")
+                self.assertEqual(payload_arg["directory"], git_dir)
 
                 # Verify lifecycle events
                 log_texts = [ev.get("text", "") for ev in events if ev.get("type") == "log"]
                 self.assertTrue(any("Preparing administrator repair" in t for t in log_texts))
-                self.assertTrue(any("Requesting Windows Administrator permission" in t for t in log_texts))
+                self.assertTrue(any("Requesting" in t and "Administrator permission" in t for t in log_texts))
                 self.assertTrue(any("Elevation granted" in t for t in log_texts))
                 self.assertTrue(any("Verifying" in t for t in log_texts))
 
@@ -209,7 +241,10 @@ class TestTenMandatoryScenarios(unittest.TestCase):
 
     def test_3_git_uac_cancellation_user_declined_elevation(self):
         """TEST 3: Git UAC cancellation -> USER_DECLINED_ELEVATION (not execution failed)."""
-        git_cmd = "powershell -NoProfile -Command \"$target = 'C:\\Program Files\\Git\\cmd'; [Environment]::SetEnvironmentVariable('Path', '...', 'Machine')\""
+        if sys.platform == "win32":
+            git_cmd = "powershell -NoProfile -Command \"$target = 'C:\\Program Files\\Git\\cmd'; [Environment]::SetEnvironmentVariable('Path', '...', 'Machine')\""
+        else:
+            git_cmd = 'export PATH="$PATH:/usr/bin"'
         cancellation_elev_res = {
             "ok": False,
             "status": "USER_DECLINED_ELEVATION",
@@ -245,9 +280,10 @@ class TestTenMandatoryScenarios(unittest.TestCase):
 
     def test_4_mysql_machine_path_repair_uses_same_generic_elevation(self):
         """TEST 4: MySQL Machine PATH repair -> uses same generic elevation mechanism."""
-        mysql_exe = r"C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe"
+        mysql_exe = r"C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe" if sys.platform == "win32" else "/usr/bin/mysql"
+        mysql_dir = str(Path(mysql_exe).parent)
         with patch.object(self.detector, "discover_executable", return_value=[mysql_exe]), \
-             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Windows\System32"]), \
+             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Windows\System32" if sys.platform == "win32" else "/usr/local/bin"]), \
              patch.object(EffectivePath, "is_dir_in_process_path", return_value=False), \
              patch.object(EffectivePath, "is_dir_in_persistent_path", return_value=False), \
              patch("dev_environment_detector.is_process_elevated", return_value=False):
@@ -259,7 +295,7 @@ class TestTenMandatoryScenarios(unittest.TestCase):
                 "ok": True,
                 "status": "EXECUTED",
                 "exit_code": 0,
-                "message": "Added C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin to Machine PATH",
+                "message": f"Added {mysql_dir} to Machine PATH",
                 "operation": "REPAIR_PATH",
                 "scope": "MACHINE",
                 "application": "MySQL",
@@ -283,15 +319,16 @@ class TestTenMandatoryScenarios(unittest.TestCase):
                 payload = mock_elev.call_args[0][0]
                 self.assertEqual(payload["operation"], "REPAIR_PATH")
                 self.assertEqual(payload["scope"], "MACHINE")
-                self.assertEqual(payload["directory"], r"C:\Program Files\MySQL\MySQL Server 8.4\bin")
+                self.assertEqual(payload["directory"], mysql_dir)
                 done_ev = next(ev for ev in events if ev.get("type") == "done")
                 self.assertEqual(done_ev["status"], "VERIFIED")
 
     def test_5_chrome_machine_path_repair_uses_same_generic_elevation(self):
         """TEST 5: Chrome Machine PATH repair -> uses same generic elevation mechanism."""
-        chrome_exe = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        chrome_exe = r"C:\Program Files\Google\Chrome\Application\chrome.exe" if sys.platform == "win32" else "/usr/bin/google-chrome"
+        chrome_dir = str(Path(chrome_exe).parent)
         with patch.object(self.detector, "discover_executable", return_value=[chrome_exe]), \
-             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Windows\System32"]), \
+             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Windows\System32" if sys.platform == "win32" else "/usr/local/bin"]), \
              patch.object(EffectivePath, "is_dir_in_process_path", return_value=False), \
              patch.object(EffectivePath, "is_dir_in_persistent_path", return_value=False), \
              patch("dev_environment_detector.is_process_elevated", return_value=False):
@@ -303,7 +340,7 @@ class TestTenMandatoryScenarios(unittest.TestCase):
                 "ok": True,
                 "status": "EXECUTED",
                 "exit_code": 0,
-                "message": "Added C:\\Program Files\\Google\\Chrome\\Application to Machine PATH",
+                "message": f"Added {chrome_dir} to Machine PATH",
                 "operation": "REPAIR_PATH",
                 "scope": "MACHINE",
                 "application": "Google Chrome",
@@ -327,15 +364,15 @@ class TestTenMandatoryScenarios(unittest.TestCase):
                 payload = mock_elev.call_args[0][0]
                 self.assertEqual(payload["operation"], "REPAIR_PATH")
                 self.assertEqual(payload["scope"], "MACHINE")
-                self.assertEqual(payload["directory"], r"C:\Program Files\Google\Chrome\Application")
+                self.assertEqual(payload["directory"], chrome_dir)
                 done_ev = next(ev for ev in events if ev.get("type") == "done")
                 self.assertEqual(done_ev["status"], "VERIFIED")
 
     def test_6_anaconda_user_path_repair_no_unnecessary_uac(self):
         """TEST 6: Anaconda User PATH repair -> no unnecessary UAC."""
-        conda_exe = r"C:\Users\tester\anaconda3\Scripts\conda.exe"
+        conda_exe = r"C:\Users\tester\anaconda3\Scripts\conda.exe" if sys.platform == "win32" else "/home/tester/anaconda3/bin/conda"
         with patch.object(self.detector, "discover_executable", return_value=[conda_exe]), \
-             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Users\tester\bin"]), \
+             patch.object(EffectivePath, "get_effective_persistent_path", return_value=[r"C:\Users\tester\bin" if sys.platform == "win32" else "/home/tester/bin"]), \
              patch.object(EffectivePath, "is_dir_in_process_path", return_value=False), \
              patch.object(EffectivePath, "is_dir_in_persistent_path", return_value=False), \
              patch("dev_environment_detector.is_process_elevated", return_value=False):
@@ -343,7 +380,10 @@ class TestTenMandatoryScenarios(unittest.TestCase):
             self.assertEqual(diag.path_scope, "USER")
             self.assertFalse(diag.requires_elevation)
             self.assertTrue(diag.automatic_repair)
-            self.assertIn("'User'", diag.repair_command)
+            if sys.platform == "win32":
+                self.assertIn("'User'", diag.repair_command)
+            else:
+                self.assertIn("export PATH", diag.repair_command)
 
             req = ExecuteRequest(
                 command=diag.repair_command,
@@ -359,14 +399,23 @@ class TestTenMandatoryScenarios(unittest.TestCase):
                 mock_run.assert_called_once()
                 mock_elev.assert_not_called()
                 called_cmd = mock_run.call_args[0][0]
-                self.assertIn("'User'", called_cmd)
+                if sys.platform == "win32":
+                    self.assertIn("'User'", called_cmd)
+                else:
+                    self.assertIn("export PATH", called_cmd)
 
     def test_7_multiple_python_versions_review_only_no_execution(self):
         """TEST 7: Multiple Python versions -> review-only -> no execution."""
-        fake_pythons = [
-            r"C:\Users\tester\AppData\Local\Programs\Python\Python312\python.exe",
-            r"C:\Users\tester\AppData\Local\Programs\Python\Python313\python.exe",
-        ]
+        if sys.platform == "win32":
+            fake_pythons = [
+                r"C:\Users\tester\AppData\Local\Programs\Python\Python312\python.exe",
+                r"C:\Users\tester\AppData\Local\Programs\Python\Python313\python.exe",
+            ]
+        else:
+            fake_pythons = [
+                "/usr/bin/python3.11",
+                "/usr/local/bin/python3.12",
+            ]
         with patch.object(self.detector, "discover_executable", return_value=fake_pythons), \
              patch.object(self.detector, "_test_launch_in_persistent_env", return_value=("Python 3.12.2", True)), \
              patch.object(EffectivePath, "is_dir_in_process_path", return_value=True):
@@ -430,10 +479,16 @@ class TestTenMandatoryScenarios(unittest.TestCase):
 
     def test_10_duplicate_python_problem_deduplicated(self):
         """TEST 10: Duplicate Python problem -> only one active problem displayed."""
-        fake_pythons = [
-            r"C:\Users\tester\AppData\Local\Programs\Python\Python312\python.exe",
-            r"C:\Users\tester\AppData\Local\Programs\Python\Python313\python.exe",
-        ]
+        if sys.platform == "win32":
+            fake_pythons = [
+                r"C:\Users\tester\AppData\Local\Programs\Python\Python312\python.exe",
+                r"C:\Users\tester\AppData\Local\Programs\Python\Python313\python.exe",
+            ]
+        else:
+            fake_pythons = [
+                "/usr/bin/python3.11",
+                "/usr/local/bin/python3.12",
+            ]
         # Simulate dev_environment_detector discovering multiple python versions
         with patch.object(self.detector, "discover_executable", return_value=fake_pythons), \
              patch.object(self.detector, "_test_launch_in_persistent_env", return_value=("Python 3.12.2", True)), \
