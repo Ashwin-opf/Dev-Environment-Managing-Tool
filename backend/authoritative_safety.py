@@ -72,8 +72,8 @@ class SafetyGateResult:
 
 # Hard blacklist of destructive operations that are NEVER permitted
 HARD_BLACKLIST = [
-    r"rm\s+-rf\s+/\s*(?:$|[\s;&|'\"])",                       # rm -rf /
-    r"rm\s+-rf\s+/\*",                                         # rm -rf /*
+    r"rm\s+-rf\s+['\"]?/\s*(?:$|[\s;&|'\"])",                       # rm -rf /
+    r"rm\s+-rf\s+['\"]?/\*['\"]?",                                  # rm -rf /*
     r"\b(mkfs|fdisk|parted|gparted|mkswap)\b",                 # disk partition formatting
     r"dd\s+if=.*of=/dev/(sd[a-z]|nvme[0-9]|mem|kmem|port)",    # raw disk wipe
     r":\(\)\{\s*:\|:\s*&\s*\}",                                # fork bomb

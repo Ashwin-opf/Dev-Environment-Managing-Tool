@@ -204,30 +204,17 @@ class TestRepairEngine(unittest.TestCase):
         from unittest.mock import patch
         import platform
 
-        if platform.system() == "Linux":
-            with patch("subprocess.run") as mock_run:
-                from unittest.mock import MagicMock
-                mock_proc = MagicMock()
-                mock_proc.stdout = "mocked out"
-                mock_proc.stderr = ""
-                mock_proc.returncode = 0
-                mock_run.return_value = mock_proc
-
+        with patch("platform.system", return_value="Linux"):
+            with patch.object(self.engine, "run_elevated_operation", return_value={"ok": True, "status": "EXECUTED", "message": "Success"}) as mock_elevated:
                 # Run a sudo command
-                self.engine.run("sudo apt-get update")
+                stdout, stderr, rc = self.engine.run("sudo apt-get update")
 
-                # Verify that it was wrapped with pkexec as a list
-                pkexec_calls = [
-                    c for c in mock_run.call_args_list
-                    if c[0] and isinstance(c[0][0], (list, tuple)) and len(c[0][0]) > 0 and c[0][0][0] == "pkexec"
-                ]
-                self.assertGreaterEqual(len(pkexec_calls), 1)
-                called_cmd = pkexec_calls[0][0][0]
-                self.assertEqual(called_cmd[0], "pkexec")
-                self.assertEqual(called_cmd[1], "bash")
-                self.assertEqual(called_cmd[2], "-c")
-                self.assertIn("apt-get update", called_cmd[3])
-                self.assertNotIn("sudo", called_cmd[3])
+                # Verify that it routes to isolated elevated operation
+                mock_elevated.assert_called_once()
+                payload = mock_elevated.call_args[0][0]
+                self.assertEqual(payload["operation"], "EXECUTE_COMMAND")
+                self.assertIn("apt-get update", payload["command"])
+                self.assertEqual(rc, 0)
 
     def test_sudo_windows_runas_wrapping(self):
         from unittest.mock import patch

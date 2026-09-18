@@ -763,8 +763,7 @@ class RepairEngine:
             return "", "Execution rejected: command is empty or a comment.", 1
 
         # Preserve compatibility for tests that patch run_elevated_operation on engine instance
-        import platform
-        if platform.system() == "Windows" and (elevate or "sudo" in clean_cmd.lower()):
+        if elevate or "sudo" in clean_cmd.lower() or "pkexec" in clean_cmd.lower():
             if (
                 getattr(self.run_elevated_operation, "_mock_self", None) is not None
                 or getattr(self.run_elevated_operation, "mock", None) is not None

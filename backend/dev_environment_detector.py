@@ -552,13 +552,28 @@ class DevEnvironmentDetector:
 
         # 4. Check multiple installations across system / PATH
         if len(discovered_exes) > 1:
+            # Deduplicate paths pointing to the exact same file (e.g. symlinks like /bin -> /usr/bin on POSIX)
+            unique_exes = {}
+            for p in discovered_exes:
+                try:
+                    real = os.path.realpath(p)
+                except Exception:
+                    real = p
+                if real not in unique_exes:
+                    unique_exes[real] = p
+            discovered_exes = list(unique_exes.values())
+
+        if len(discovered_exes) > 1:
             distinct_roots = set()
             for p in discovered_exes:
-                parent = Path(p).parent
-                if parent.name.lower() in ("bin", "cmd", "scripts"):
-                    distinct_roots.add(str(parent.parent).lower())
+                try:
+                    resolved_parent = Path(os.path.realpath(p)).parent
+                except Exception:
+                    resolved_parent = Path(p).parent
+                if resolved_parent.name.lower() in ("bin", "cmd", "scripts"):
+                    distinct_roots.add(str(resolved_parent.parent).lower())
                 else:
-                    distinct_roots.add(str(parent).lower())
+                    distinct_roots.add(str(resolved_parent).lower())
             if len(distinct_roots) > 1:
                 active_exe = shutil.which(identity.executable_name) or primary_exe
                 version_output, _ = self._test_launch_in_persistent_env(identity, active_exe)
