@@ -185,14 +185,28 @@ def _darwin_gpus() -> list[dict[str, Any]]:
     return gpus
 
 
+_gpu_hardware_cache: list[dict[str, Any]] | None = None
+_gpu_hardware_lock = threading.Lock()
+
+
 def list_gpus() -> list[dict[str, Any]]:
+    global _gpu_hardware_cache
+    with _gpu_hardware_lock:
+        if _gpu_hardware_cache is not None:
+            return _gpu_hardware_cache
+
     if OS_NAME == "Linux":
-        return _linux_gpus()
-    if OS_NAME == "Windows":
-        return _windows_gpus()
-    if OS_NAME == "Darwin":
-        return _darwin_gpus()
-    return []
+        result = _linux_gpus()
+    elif OS_NAME == "Windows":
+        result = _windows_gpus()
+    elif OS_NAME == "Darwin":
+        result = _darwin_gpus()
+    else:
+        result = []
+
+    with _gpu_hardware_lock:
+        _gpu_hardware_cache = result
+    return result
 
 
 def _linux_recommended_drivers() -> list[str]:
@@ -678,27 +692,65 @@ def _windows_gpu_usage(gpus: list[dict[str, Any]]) -> list[dict[str, Any]]:
     nvidia_rows = _nvidia_usage_rows()
     nvidia_idx = 0
 
-    # Query maximum live GPU engine utilization across all engines in under 200ms
+    # Query maximum live GPU engine utilization and total committed memory across all GPU engines
     wmi_gpu_pct = 0
+    wmi_vram_used_mb = 0.0
     try:
         wmi_script = (
-            "Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine -ErrorAction SilentlyContinue | "
-            "Select-Object -ExpandProperty UtilizationPercentage | Sort-Object -Descending | Select-Object -First 1"
+            "$eng = (Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine -ErrorAction SilentlyContinue | "
+            "Measure-Object -Property UtilizationPercentage -Maximum).Maximum; "
+            "$mem = (Get-CimInstance Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory -ErrorAction SilentlyContinue | "
+            "Measure-Object -Property TotalCommitted -Sum).Sum; "
+            'Write-Output "$eng,$mem"'
         )
-        wmi_r = _run(["powershell", "-NoProfile", "-Command", wmi_script], timeout=3)
+        wmi_r = _run(["powershell", "-NoProfile", "-Command", wmi_script], timeout=6)
         if wmi_r.returncode == 0 and wmi_r.stdout.strip():
-            wmi_gpu_pct = int(float(wmi_r.stdout.strip()))
+            parts = wmi_r.stdout.strip().replace("\r", "").split("\n")
+            joined = ",".join(p.strip() for p in parts if p.strip())
+            tokens = [t.strip() for t in joined.split(",") if t.strip()]
+            if len(tokens) >= 1 and tokens[0].replace(".", "", 1).isdigit():
+                wmi_gpu_pct = int(float(tokens[0]))
+            if len(tokens) >= 2 and tokens[1].replace(".", "", 1).isdigit():
+                wmi_vram_used_mb = round(float(tokens[1]) / (1024 * 1024), 1)
+    except Exception:
+        pass
+
+    total_system_ram_bytes = 0
+    try:
+        import psutil
+        total_system_ram_bytes = psutil.virtual_memory().total
     except Exception:
         pass
 
     for gpu in gpus:
         kind = gpu.get("kind") or "dedicated"
+        vram_raw_bytes = gpu.get("vram_bytes") or 0
+        if kind == "integrated":
+            # On Windows, integrated GPUs use shared system RAM up to 50%
+            shared_pool_mb = round((total_system_ram_bytes * 0.5) / (1024 * 1024), 1) if total_system_ram_bytes else 2048.0
+            dedicated_mb = round(vram_raw_bytes / (1024 * 1024), 1) if vram_raw_bytes else 0.0
+            total_mb = max(shared_pool_mb, dedicated_mb, wmi_vram_used_mb, 1024.0)
+        else:
+            total_mb = round(vram_raw_bytes / (1024 * 1024), 1) if vram_raw_bytes else 4096.0
+            if wmi_vram_used_mb > total_mb:
+                total_mb = wmi_vram_used_mb
+
+        used_mb = min(total_mb, wmi_vram_used_mb)
+        if used_mb <= 0:
+            # Desktop Window Manager (DWM) and Windows Display compositor allocate at least ~180-350MB
+            used_mb = min(total_mb, 280.0)
+
         entry: dict[str, Any] = {
             "name": gpu["name"],
             "kind": kind,
             "kind_label": "Integrated GPU" if kind == "integrated" else "Dedicated GPU",
             "available": True,
             "usage_pct": max(0, min(100, wmi_gpu_pct)),
+            "vram_used_mb": used_mb,
+            "vram_total_mb": total_mb,
+            "mem_used_mb": used_mb,
+            "mem_total_mb": total_mb,
+            "temperature_c": None,
             "source": "WMI GPU perf counters",
         }
         if kind == "integrated":
@@ -715,6 +767,8 @@ def _windows_gpu_usage(gpus: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "usage_pct": row["usage_pct"],
                 "mem_used_mb": row["mem_used_mb"],
                 "mem_total_mb": row["mem_total_mb"],
+                "vram_used_mb": row["mem_used_mb"],
+                "vram_total_mb": row["mem_total_mb"],
                 "temperature_c": row["temperature_c"],
                 "source": "nvidia-smi",
                 "name": row["name"],
@@ -743,6 +797,43 @@ _gpu_info_cache = None
 _gpu_cache_lock = threading.Lock()
 _bg_thread_started = False
 
+def _default_gpu_info() -> dict[str, Any]:
+    gpus = list_gpus()
+    entries = []
+    total_ram = 0
+    try:
+        import psutil
+        total_ram = psutil.virtual_memory().total
+    except Exception:
+        pass
+    for g in gpus:
+        kind = g.get("kind", "dedicated")
+        raw_vram = g.get("vram_bytes") or 0
+        if kind == "integrated":
+            tot_mb = round(max(raw_vram, int(total_ram * 0.5)) / (1024 * 1024), 1) if (raw_vram or total_ram) else 1024.0
+        else:
+            tot_mb = round(raw_vram / (1024 * 1024), 1) if raw_vram else 4096.0
+        entries.append({
+            "name": g.get("name", "GPU"),
+            "kind": kind,
+            "kind_label": "Integrated GPU" if kind == "integrated" else "Dedicated GPU",
+            "available": True,
+            "usage_pct": 0,
+            "vram_used_mb": 0,
+            "vram_total_mb": tot_mb,
+            "mem_used_mb": 0,
+            "mem_total_mb": tot_mb,
+            "temperature_c": None,
+            "source": "hardware",
+        })
+    return {
+        "ok": True,
+        "available": bool(entries),
+        "gpus": entries,
+        "os": OS_NAME,
+        "message": None if entries else "No GPU hardware detected."
+    }
+
 def _bg_gpu_updater():
     global _gpu_info_cache
     while True:
@@ -752,7 +843,7 @@ def _bg_gpu_updater():
                 _gpu_info_cache = info
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(1.0)
 
 def _query_gpu_usage_info_raw() -> dict[str, Any]:
     gpus = list_gpus()
@@ -789,4 +880,13 @@ def get_gpu_usage_info() -> dict[str, Any]:
         if _gpu_info_cache is not None:
             return _gpu_info_cache
 
-    return _query_gpu_usage_info_raw()
+    return _default_gpu_info()
+
+# Start background updater eagerly so cache is warm from the start
+try:
+    if not _bg_thread_started:
+        _bg_thread_started = True
+        _bg_t = threading.Thread(target=_bg_gpu_updater, daemon=True)
+        _bg_t.start()
+except Exception:
+    pass

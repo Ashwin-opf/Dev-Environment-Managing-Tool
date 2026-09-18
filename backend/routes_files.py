@@ -293,33 +293,48 @@ def _system_disk_path() -> str:
 
 
 _dashboard_resources_cache = {"timestamp": 0, "payload": None}
+_cached_dashboard_roots = None
+_PROC_CPU_HISTORY: dict[int, tuple[float, float]] = {}
 
-@router.get("/api/dashboard/resources")
-async def dashboard_resources():
-    """Return dashboard-only disk folders and stoppable user apps."""
-    now = time.time()
-    if _dashboard_resources_cache["payload"] is not None and (now - _dashboard_resources_cache["timestamp"]) < 2.5:
-        return _dashboard_resources_cache["payload"]
-
+def _get_cached_roots():
+    global _cached_dashboard_roots
+    if _cached_dashboard_roots is not None:
+        return _cached_dashboard_roots
     home = Path.home()
     roots = [
         {"label": "Home", "path": str(home), "read_only": True},
     ]
     for folder_name in ["Desktop", "Downloads", "Documents", "Pictures", "Music", "Videos"]:
         p = home / folder_name
-        if p.exists() and p.is_dir():
-            roots.append({"label": folder_name, "path": str(p), "read_only": True})
+        try:
+            if p.exists() and p.is_dir():
+                roots.append({"label": folder_name, "path": str(p), "read_only": True})
+        except Exception:
+            pass
     roots.append({"label": "OS Files", "path": _system_disk_path(), "read_only": True})
+    _cached_dashboard_roots = roots
+    return roots
 
+
+@router.get("/api/dashboard/resources")
+def dashboard_resources():
+    """Return dashboard-only disk folders and stoppable user apps at Task Manager refresh speed."""
+    global _PROC_CPU_HISTORY
+    now = time.time()
+    if _dashboard_resources_cache["payload"] is not None and (now - _dashboard_resources_cache["timestamp"]) < 1.2:
+        return _dashboard_resources_cache["payload"]
+
+    roots = _get_cached_roots()
     current_uid = os.getuid() if hasattr(os, "getuid") else None
     app_groups = {}
 
-    proc_attrs = ["pid", "name", "memory_info", "cpu_percent"]
+    proc_attrs = ["pid", "name", "memory_info", "cpu_times"]
     if platform.system() != "Windows":
         proc_attrs.append("uids")
 
     num_cores = psutil.cpu_count() or 1
     total_mem = psutil.virtual_memory().total or 1
+    new_cpu_history = {}
 
     for proc in psutil.process_iter(proc_attrs):
         try:
@@ -330,6 +345,18 @@ async def dashboard_resources():
             status = _process_dashboard_status(proc, current_uid)
             if status is None:
                 continue
+
+            pid = info["pid"]
+            cpu_times = info.get("cpu_times")
+            cpu_pct = 0.0
+            if cpu_times:
+                total_cpu_time = cpu_times.user + cpu_times.system
+                new_cpu_history[pid] = (total_cpu_time, now)
+                if pid in _PROC_CPU_HISTORY:
+                    prev_cpu_time, prev_time = _PROC_CPU_HISTORY[pid]
+                    dt = now - prev_time
+                    if dt > 0.05:
+                        cpu_pct = max(0.0, ((total_cpu_time - prev_cpu_time) / dt) * 100.0 / num_cores)
 
             mem_info = info.get("memory_info")
             rss_bytes = mem_info.rss if mem_info else 0
@@ -348,9 +375,9 @@ async def dashboard_resources():
                     "browser_control": False,
                 }
             group = app_groups[name]
-            group["pids"].append(info["pid"])
+            group["pids"].append(pid)
             group["process_count"] += 1
-            group["cpu_percent"] += float(info.get("cpu_percent") or 0) / num_cores
+            group["cpu_percent"] += cpu_pct
             group["memory_mb"] += rss_bytes / (1024 * 1024)
             group["memory_percent"] += (rss_bytes / total_mem) * 100.0
             group["stoppable"] = group["stoppable"] and status["stoppable"]
@@ -358,6 +385,8 @@ async def dashboard_resources():
                 group["category"] = "Necessary Windows process" if platform.system() == "Windows" else "Necessary Linux app"
         except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
             continue
+
+    _PROC_CPU_HISTORY = new_cpu_history
 
     apps = list(app_groups.values())
     for app in apps:
@@ -367,8 +396,8 @@ async def dashboard_resources():
 
     normal_apps = [app for app in apps if app["stoppable"]]
     necessary_apps = [app for app in apps if not app["stoppable"]]
-    normal_apps.sort(key=lambda p: (-(p["memory_mb"]), -(p["cpu_percent"])))
-    necessary_apps.sort(key=lambda p: (-(p["memory_mb"]), -(p["cpu_percent"])))
+    normal_apps.sort(key=lambda p: (-(p["cpu_percent"]), -(p["memory_mb"])))
+    necessary_apps.sort(key=lambda p: (-(p["cpu_percent"]), -(p["memory_mb"])))
 
     sorted_apps = normal_apps + necessary_apps
 

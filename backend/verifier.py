@@ -168,6 +168,27 @@ def check(target: str, expected_state: Dict[str, Any]) -> Dict[str, Any]:
         if not cleared:
             failures.append(f"Original error signature still present: {original_error[:100]}")
 
+    # 4. Authoritative Verification Engine Integration
+    try:
+        from verification_engine import verification_engine, VerificationLevel, VerificationStatus
+        verif_res = verification_engine.verify_tool(
+            target_name_or_id=target,
+            level=VerificationLevel.CONTROLLED,
+        )
+        if verif_res:
+            evidence["verification_engine_status"] = verif_res.status.value
+            evidence["authoritative_level"] = verif_res.level.value
+            if verif_res.version_detected:
+                evidence["version_detected"] = verif_res.version_detected
+                if not version_str:
+                    version_str = verif_res.version_detected
+                    evidence["version_output"] = version_str
+            if verif_res.status == VerificationStatus.VERIFIED and not evidence.get("on_path"):
+                evidence["on_path"] = True
+                failures = [f for f in failures if "not found on PATH" not in f]
+    except Exception:
+        pass
+
     passed = len(failures) == 0
     return {
         "passed": passed,
@@ -175,3 +196,4 @@ def check(target: str, expected_state: Dict[str, Any]) -> Dict[str, Any]:
         "evidence": evidence,
         "failures": failures,
     }
+

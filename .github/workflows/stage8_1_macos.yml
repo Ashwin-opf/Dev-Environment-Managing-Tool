@@ -1,0 +1,64 @@
+name: Stage 8.1 — macOS Live Validation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  validate-macos:
+    name: Native macOS Live Validation
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest
+
+      - name: Initialize Static Knowledge Base
+        run: |
+          python backend/populate_static_db.py
+
+      - name: Print Runner Diagnostics
+        run: |
+          echo "=== RUNNER OS & KERNEL ==="
+          uname -a
+          sw_vers
+          echo "=== CPU & MEMORY ==="
+          sysctl -n machdep.cpu.brand_string || true
+          df -h || true
+
+      - name: Run Native Stage 8.1 Validation Runner
+        run: |
+          python scratch/cross_platform_live_validation.py --stage 8.1 --output-prefix stage8_1_
+
+      - name: Run Pytest Test Suite
+        run: |
+          set -o pipefail
+          pytest tests/ -q 2>&1 | tee pytest_macos.log
+
+      - name: Upload macOS Validation Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage8_1-macos-evidence
+          path: |
+            scratch/stage8_1_macos_evidence.json
+            pytest_macos.log
+            backend/pc_doctor.log
+          retention-days: 14
+
+      - name: Final macOS Status
+        run: |
+          echo "============================================================"
+          echo "STAGE 8.1 MACOS LIVE VALIDATION COMPLETE"
+          echo "============================================================"
+          cat scratch/stage8_1_macos_evidence.json

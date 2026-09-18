@@ -19,6 +19,7 @@ import errno
 import signal
 import logging
 import platform
+import psutil
 import uvicorn
 from datetime import datetime, timezone
 from pathlib import Path
@@ -305,8 +306,12 @@ async def check_api_token(request: Request, call_next):
 import routes_agent
 import routes_catalog
 import routes_control_center
+import routes_kb
+import routes_ai_config
+import routes_test_lab
 
 app.include_router(routes_ai.router)
+app.include_router(routes_ai_config.router)
 app.include_router(routes_logs.router)
 app.include_router(routes_files.router)
 app.include_router(routes_system.router)
@@ -314,6 +319,8 @@ app.include_router(routes_shce.router)
 app.include_router(routes_agent.router)
 app.include_router(routes_catalog.router)
 app.include_router(routes_control_center.router)
+app.include_router(routes_kb.router)
+app.include_router(routes_test_lab.router)
 
 
 # ─── Health endpoint ──────────────────────────────────────────────────────────
@@ -347,6 +354,13 @@ async def connection_status():
         "ok": True,
         **status,
     }
+
+
+# ─── Static files (serve frontend dist) ───────────────────────────────────────
+frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

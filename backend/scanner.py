@@ -1,4 +1,4 @@
-﻿"""
+"""
 System Scanner — Detects health issues across OS, dev tools, and hardware.
 Each check returns a dict: {type, severity, title, detail, recipe_hint}
 """
@@ -10,7 +10,7 @@ import psutil
 import re
 import time
 from pathlib import Path
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional, Set
 
 
 # Cross-platform subprocess wrapper — always decodes output as UTF-8.
@@ -77,6 +77,24 @@ class SystemScanner:
             {"id": "dev_tools", "title": "Developer Environment Check"}
         ]
 
+    def invalidate_cache(self, step_id: Optional[str] = None) -> None:
+        """Invalidates TTL cache for a step or all steps."""
+        global _STEP_CACHE
+        if step_id:
+            _STEP_CACHE.pop(step_id, None)
+        else:
+            _STEP_CACHE.clear()
+
+    def remove_issue(self, issue_type_or_title: str) -> None:
+        """Purges an issue from latest_issues and marks it resolved."""
+        if hasattr(self, "latest_issues") and isinstance(self.latest_issues, list):
+            self.latest_issues = [
+                x for x in self.latest_issues
+                if x.get("type") != issue_type_or_title and x.get("title") != issue_type_or_title
+            ]
+        if hasattr(self, "resolved_types"):
+            self.resolved_types.add(issue_type_or_title)
+
     def run_step(self, step_id: str) -> List[Dict[str, Any]]:
         """Run a single scanning step by ID. Uses TTL cache for expensive steps."""
         # Return cached result if fresh
@@ -112,7 +130,7 @@ class SystemScanner:
         elif step_id == "os_updates":
             res = self._check_system_updates()
         elif step_id == "dev_tools":
-            res = self._check_python() + self._check_docker()
+            res = self._check_devtools()
 
         # Cache the raw result before filtering
         _set_cached(step_id, res)
@@ -143,12 +161,7 @@ class SystemScanner:
                 issues += self._check_windows_drivers()
 
         if dev:
-            issues += self._check_python()
-            issues += self._check_node()
-            issues += self._check_git()
-            issues += self._check_docker()
-            issues += self._check_java()
-            issues += self._check_vscode()
+            issues += self._check_devtools()
 
         if hasattr(self, "resolved_types") and self.resolved_types:
             issues = [x for x in issues if x.get("type") not in self.resolved_types and x.get("recipe_hint") not in self.resolved_types]
@@ -330,20 +343,17 @@ class SystemScanner:
         if platform.system() != "Windows":
             return issues
         try:
-            # Use -NoProfile -NonInteractive to reduce PowerShell startup overhead (~3-4s saved)
-            res = _safe_run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                 "Get-Service wuauserv | Select-Object -ExpandProperty Status"],
-                timeout=4
-            )
-            status = res.stdout.strip()
-            if "Running" not in status:
+            from dev_environment_detector import dev_environment_detector
+            svc = dev_environment_detector.check_service("wuauserv")
+            if svc.get("exists") and svc.get("status") == "Stopped":
                 issues.append({
                     "type": "service_wuauserv",
                     "severity": SEVERITY_MEDIUM,
                     "title": "Windows Update Agent Stopped",
                     "detail": "The Windows Update service (wuauserv) is inactive. Updates cannot be retrieved.",
-                    "recipe_hint": "powershell -Command \"Start-Service wuauserv\""
+                    "recipe_hint": 'powershell -Command "Start-Service wuauserv"',
+                    "fix_command": 'powershell -Command "Start-Service wuauserv"',
+                    "category": "Services",
                 })
         except Exception:
             pass
@@ -373,49 +383,171 @@ class SystemScanner:
             pass
         return issues
 
-    # ── Developer Tools ───────────────────────────────────────────────────────
-    def _check_python(self) -> list:
+    # ── Authoritative General Developer Environment Detection ────────────────
+    def _check_devtools(self) -> list:
         issues = []
-        py = shutil.which("python") or shutil.which("python3")
-        if not py:
-            issues.append({
-                "type": "python_path",
-                "severity": SEVERITY_MEDIUM,
-                "title": "Python Not Found in PATH",
-                "detail": "The `python` command is not accessible. PATH may be misconfigured.",
-                "recipe_hint": "Python PATH missing",
-            })
-        return issues
-
-    def _check_node(self) -> list:
-        return []
-
-    def _check_git(self) -> list:
-        return []
-
-    def _check_docker(self) -> list:
-        issues = []
-        if not shutil.which("docker"):
-            return []
         try:
-            result = _safe_run(["docker", "info"], timeout=4)
-            if result.returncode != 0:
+            from dev_environment_detector import dev_environment_detector, ToolHealthStatus
+            diagnoses = dev_environment_detector.diagnose_all_tools()
+            for diag in diagnoses:
+                if diag.status in (ToolHealthStatus.INSTALLED_AND_USABLE, ToolHealthStatus.NOT_INSTALLED):
+                    continue
+
+                if diag.status == ToolHealthStatus.INSTALLED_BUT_PATH_MISSING:
+                    title = f"{diag.display_name} Installed But Missing From PATH"
+                    sev = SEVERITY_MEDIUM
+                elif diag.status == ToolHealthStatus.SERVICE_INSTALLED_BUT_STOPPED:
+                    title = f"{diag.display_name} Service Stopped"
+                    sev = SEVERITY_MEDIUM
+                elif diag.status == ToolHealthStatus.PORT_CONFLICT:
+                    title = f"{diag.display_name} Port Conflict (Port {diag.port_conflict})"
+                    sev = SEVERITY_MEDIUM
+                elif diag.status == ToolHealthStatus.MULTIPLE_VERSIONS:
+                    title = f"Multiple {diag.display_name} Versions In PATH"
+                    sev = SEVERITY_LOW
+                elif diag.status == ToolHealthStatus.EXECUTABLE_EXISTS_BUT_VERIFICATION_FAILED:
+                    title = f"{diag.display_name} Executable Corrupted Or Verification Failed"
+                    sev = SEVERITY_HIGH
+                elif diag.status == ToolHealthStatus.PACKAGE_MANAGER_STATE_MISMATCH:
+                    title = f"{diag.display_name} Package Manager Registration Mismatch"
+                    sev = SEVERITY_MEDIUM
+                else:
+                    title = f"{diag.display_name} Configuration Issue"
+                    sev = SEVERITY_MEDIUM
+
                 issues.append({
-                    "type": "docker_stopped",
-                    "severity": SEVERITY_MEDIUM,
-                    "title": "Docker Daemon Not Running",
-                    "detail": "Docker is installed but the daemon is not running.",
-                    "recipe_hint": "Docker service stopped",
+                    "type": f"tool_health_{diag.tool_id}_{diag.status.value.lower()}",
+                    "severity": sev,
+                    "title": title,
+                    "detail": diag.diagnosis_message,
+                    "recipe_hint": None,
+                    "fix_command": diag.repair_command,
+                    "recommended_action": diag.recommended_action,
+                    "automatic_repair": diag.automatic_repair,
+                    "category": "Developer Environment",
+                    "tool_id": diag.tool_id,
+                    "issue_status": diag.status.value,
+                    "requires_elevation": diag.requires_elevation,
+                    "scope": diag.path_scope,
+                    "repairability": "AUTOMATIC_WITH_ELEVATION" if diag.requires_elevation else ("AUTOMATIC" if diag.repair_command and diag.automatic_repair else "REVIEW_REQUIRED"),
                 })
-        except Exception:
+        except Exception as exc:
             pass
         return issues
 
+    def _check_python(self) -> list:
+        from dev_environment_detector import dev_environment_detector, ToolHealthStatus
+        diag = dev_environment_detector.diagnose_tool("python")
+        if diag.status in (ToolHealthStatus.INSTALLED_AND_USABLE, ToolHealthStatus.NOT_INSTALLED):
+            return []
+        return [{
+            "type": "python_path",
+            "severity": SEVERITY_MEDIUM,
+            "title": f"Python Health Issue: {diag.status.value}",
+            "detail": diag.diagnosis_message,
+            "recipe_hint": None,
+            "fix_command": diag.repair_command,
+            "recommended_action": diag.recommended_action,
+            "automatic_repair": diag.automatic_repair,
+            "requires_elevation": diag.requires_elevation,
+            "scope": diag.path_scope,
+            "repairability": "AUTOMATIC_WITH_ELEVATION" if diag.requires_elevation else ("AUTOMATIC" if diag.repair_command and diag.automatic_repair else "REVIEW_REQUIRED"),
+        }]
+
+    def _check_node(self) -> list:
+        from dev_environment_detector import dev_environment_detector, ToolHealthStatus
+        diag = dev_environment_detector.diagnose_tool("nodejs")
+        if diag.status in (ToolHealthStatus.INSTALLED_AND_USABLE, ToolHealthStatus.NOT_INSTALLED):
+            return []
+        return [{
+            "type": "node_health",
+            "severity": SEVERITY_MEDIUM,
+            "title": f"Node.js Health Issue: {diag.status.value}",
+            "detail": diag.diagnosis_message,
+            "recipe_hint": None,
+            "fix_command": diag.repair_command,
+            "recommended_action": diag.recommended_action,
+            "automatic_repair": diag.automatic_repair,
+            "requires_elevation": diag.requires_elevation,
+            "scope": diag.path_scope,
+            "repairability": "AUTOMATIC_WITH_ELEVATION" if diag.requires_elevation else ("AUTOMATIC" if diag.repair_command and diag.automatic_repair else "REVIEW_REQUIRED"),
+        }]
+
+    def _check_git(self) -> list:
+        from dev_environment_detector import dev_environment_detector, ToolHealthStatus
+        diag = dev_environment_detector.diagnose_tool("git")
+        if diag.status in (ToolHealthStatus.INSTALLED_AND_USABLE, ToolHealthStatus.NOT_INSTALLED):
+            return []
+        return [{
+            "type": "git_path",
+            "severity": SEVERITY_MEDIUM,
+            "title": f"Git Health Issue: {diag.status.value}",
+            "detail": diag.diagnosis_message,
+            "recipe_hint": None,
+            "fix_command": diag.repair_command,
+            "recommended_action": diag.recommended_action,
+            "automatic_repair": diag.automatic_repair,
+            "requires_elevation": diag.requires_elevation,
+            "scope": diag.path_scope,
+            "repairability": "AUTOMATIC_WITH_ELEVATION" if diag.requires_elevation else ("AUTOMATIC" if diag.repair_command and diag.automatic_repair else "REVIEW_REQUIRED"),
+        }]
+
+    def _check_docker(self) -> list:
+        from dev_environment_detector import dev_environment_detector, ToolHealthStatus
+        diag = dev_environment_detector.diagnose_tool("docker")
+        if diag.status in (ToolHealthStatus.INSTALLED_AND_USABLE, ToolHealthStatus.NOT_INSTALLED):
+            return []
+        return [{
+            "type": "docker_stopped",
+            "severity": SEVERITY_MEDIUM,
+            "title": f"Docker Health Issue: {diag.status.value}",
+            "detail": diag.diagnosis_message,
+            "recipe_hint": None,
+            "fix_command": diag.repair_command,
+            "recommended_action": diag.recommended_action,
+            "automatic_repair": diag.automatic_repair,
+            "requires_elevation": diag.requires_elevation,
+            "scope": diag.path_scope,
+            "repairability": "AUTOMATIC_WITH_ELEVATION" if diag.requires_elevation else ("AUTOMATIC" if diag.repair_command and diag.automatic_repair else "REVIEW_REQUIRED"),
+        }]
+
     def _check_java(self) -> list:
-        return []
+        from dev_environment_detector import dev_environment_detector, ToolHealthStatus
+        diag = dev_environment_detector.diagnose_tool("java")
+        if diag.status in (ToolHealthStatus.INSTALLED_AND_USABLE, ToolHealthStatus.NOT_INSTALLED):
+            return []
+        return [{
+            "type": "java_health",
+            "severity": SEVERITY_MEDIUM,
+            "title": f"Java Health Issue: {diag.status.value}",
+            "detail": diag.diagnosis_message,
+            "recipe_hint": None,
+            "fix_command": diag.repair_command,
+            "recommended_action": diag.recommended_action,
+            "automatic_repair": diag.automatic_repair,
+            "requires_elevation": diag.requires_elevation,
+            "scope": diag.path_scope,
+            "repairability": "AUTOMATIC_WITH_ELEVATION" if diag.requires_elevation else ("AUTOMATIC" if diag.repair_command and diag.automatic_repair else "REVIEW_REQUIRED"),
+        }]
 
     def _check_vscode(self) -> list:
-        return []
+        from dev_environment_detector import dev_environment_detector, ToolHealthStatus
+        diag = dev_environment_detector.diagnose_tool("vscode")
+        if diag.status in (ToolHealthStatus.INSTALLED_AND_USABLE, ToolHealthStatus.NOT_INSTALLED):
+            return []
+        return [{
+            "type": "vscode_health",
+            "severity": SEVERITY_MEDIUM,
+            "title": f"VS Code Health Issue: {diag.status.value}",
+            "detail": diag.diagnosis_message,
+            "recipe_hint": None,
+            "fix_command": diag.repair_command,
+            "recommended_action": diag.recommended_action,
+            "automatic_repair": diag.automatic_repair,
+            "requires_elevation": diag.requires_elevation,
+            "scope": diag.path_scope,
+            "repairability": "AUTOMATIC_WITH_ELEVATION" if diag.requires_elevation else ("AUTOMATIC" if diag.repair_command and diag.automatic_repair else "REVIEW_REQUIRED"),
+        }]
 
     def _check_linux_services(self) -> list:
         issues = []
@@ -484,3 +616,8 @@ class SystemScanner:
         except Exception:
             pass
         return issues
+
+
+# Global singleton instance
+scanner = SystemScanner()
+

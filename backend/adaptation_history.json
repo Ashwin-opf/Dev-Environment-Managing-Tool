@@ -62,5 +62,125 @@
     "converted": "winget upgrade --all --silent",
     "status": "success",
     "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:13:17.040498Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:13:46.305405Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:13:46.309367Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-09-08T21:13:47.336952Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:14:06.026704Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:14:06.027892Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-09-08T21:14:06.765874Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:15:31.516523Z",
+    "event": "os_rescan",
+    "generic": "system",
+    "converted": "Windows",
+    "status": "success",
+    "detail": "Package manager: Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:15:31.518878Z",
+    "event": "refresh_commands",
+    "generic": "catalog",
+    "converted": "Winget",
+    "status": "success",
+    "detail": "Loaded 7 OS-specific actions"
+  },
+  {
+    "timestamp": "2026-09-08T21:15:32.444284Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-08T21:28:06.693493Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-09T19:10:49.859345Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-09T19:46:26.599209Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-09T20:03:05.950243Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
+  },
+  {
+    "timestamp": "2026-09-09T21:06:33.308960Z",
+    "event": "validate_mapping",
+    "generic": "Update Packages",
+    "converted": "winget upgrade --all --silent",
+    "status": "success",
+    "detail": "Winget"
   }
 ]

@@ -2437,17 +2437,21 @@ class SHCEOrchestrator:
         # Execute
         self.error_db.update_queue_item(queue_id, "executing")
         
-        if ENABLE_DEV_MODE:
-            stdout = "Mock execution successful in Dev Mode."
-            stderr = ""
-            rc = 0
-        else:
-            try:
-                engine = RepairEngine(Path(self.db_path))
-                stdout, stderr, rc = engine.run(command, trigger_shce=False)
-            except Exception as exc:
-                self.error_db.update_queue_item(queue_id, "failed", stderr=str(exc), rc=-1)
-                return {"ok": False, "error": str(exc)}
+        # Execute via CentralizedExecutionEngine
+        from execution_engine import execution_engine
+        try:
+            outcome = execution_engine.execute_command(
+                command=command,
+                operation="REPAIR",
+                source="SHCE",
+                trigger_shce=False,
+            )
+            stdout = outcome.stdout or ""
+            stderr = outcome.stderr or outcome.message or ""
+            rc = outcome.return_code if outcome.return_code is not None else (0 if outcome.success else -1)
+        except Exception as exc:
+            self.error_db.update_queue_item(queue_id, "failed", stderr=str(exc), rc=-1)
+            return {"ok": False, "error": str(exc)}
 
         status = "executed" if rc == 0 else "failed"
         self.error_db.update_queue_item(queue_id, status, stdout=stdout, stderr=stderr, rc=rc)
@@ -2520,59 +2524,51 @@ class SHCEOrchestrator:
         self.error_db.update_queue_item(queue_id, "executing")
         yield {"type": "log", "text": f"Executing fix for repair #{queue_id}: {command}", "stream": "stdout"}
 
-        if ENABLE_DEV_MODE:
-            stdout = "Mock execution successful in Dev Mode."
-            stderr = ""
-            rc = 0
-            yield {"type": "log", "text": stdout, "stream": "stdout"}
-            yield {"type": "progress", "percent": 100, "detail": "Completed"}
-            yield {"type": "done", "ok": True, "returncode": 0, "stdout": stdout, "stderr": stderr}
-        else:
-            engine = RepairEngine(Path(self.db_path))
-            full_stdout = ""
-            full_stderr = ""
-            rc = 0
-            for event in engine.stream_run(command, trigger_shce=False):
-                if event["type"] == "done":
-                    full_stdout = event.get("stdout", "")
-                    full_stderr = event.get("stderr", "")
-                    rc = event.get("returncode", 0)
-                yield event
+        from execution_engine import execution_engine
+        full_stdout = ""
+        full_stderr = ""
+        rc = 0
+        for event in execution_engine.stream_execute_command(command, operation="REPAIR", source="SHCE", trigger_shce=False):
+            if event.get("type") == "done":
+                full_stdout = event.get("stdout", "")
+                full_stderr = event.get("stderr", "")
+                rc = event.get("returncode", 0)
+            yield event
 
-            status = "executed" if rc == 0 else "failed"
-            self.error_db.update_queue_item(queue_id, status, stdout=full_stdout, stderr=full_stderr, rc=rc)
+        status = "executed" if rc == 0 else "failed"
+        self.error_db.update_queue_item(queue_id, status, stdout=full_stdout, stderr=full_stderr, rc=rc)
 
-            if rc == 0:
-                try:
-                    import sqlite3
-                    from self_healing import DB_PATH
-                    conn = sqlite3.connect(DB_PATH)
-                    conn.execute(
-                        "UPDATE self_healing_attempts SET result = 'Healing Successful' "
-                        "WHERE attempted_fix = ? OR attempted_fix = ? OR error_source = ?",
-                        (command, item.get("command", ""), item.get("command", ""))
-                    )
-                    conn.commit()
-                    conn.close()
-                except Exception as e:
-                    print("Failed to sync self_healing_attempts:", e)
+        if rc == 0:
+            try:
+                import sqlite3
+                from self_healing import DB_PATH
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute(
+                    "UPDATE self_healing_attempts SET result = 'Healing Successful' "
+                    "WHERE attempted_fix = ? OR attempted_fix = ? OR error_source = ?",
+                    (command, item.get("command", ""), item.get("command", ""))
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                print("Failed to sync self_healing_attempts:", e)
 
-                try:
-                    from self_healing import self_healing_mgr
-                    env = EnvironmentProfiler.snapshot()
-                    original_error = item.get("error", "")
-                    self_healing_mgr.record_knowledge(
-                        os_name=env["os_name"],
-                        os_version="",
-                        kernel_version=env["kernel"],
-                        error_pattern=ErrorIntelligenceDB._signature(original_error),
-                        successful_fix=command,
-                        default_fallback=item.get("command", ""),
-                        source="SHCE Auto-Repair",
-                        success=True,
-                    )
-                except Exception:
-                    pass
+            try:
+                from self_healing import self_healing_mgr
+                env = EnvironmentProfiler.snapshot()
+                original_error = item.get("error", "")
+                self_healing_mgr.record_knowledge(
+                    os_name=env["os_name"],
+                    os_version="",
+                    kernel_version=env["kernel"],
+                    error_pattern=ErrorIntelligenceDB._signature(original_error),
+                    successful_fix=command,
+                    default_fallback=item.get("command", ""),
+                    source="SHCE Auto-Repair",
+                    success=True,
+                )
+            except Exception:
+                pass
 
     def get_dashboard_data(self) -> Dict[str, Any]:
         """Returns all data needed for the SHCE Control Center UI."""

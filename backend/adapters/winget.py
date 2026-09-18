@@ -1,5 +1,12 @@
 """
 Winget Package Manager Adapter (Windows)
+========================================
+Authoritative adapter for Windows Package Manager (WinGet).
+Enforces:
+- Clean quoted command generation without blind chaining (`||`).
+- Exact ID matching (`--exact`).
+- Capability checking for publisher-managed packages (e.g. Anaconda).
+- Non-interactive silent execution flags.
 """
 
 import shutil
@@ -8,7 +15,7 @@ from typing import Any, Dict, List, Optional
 from .base import BaseAdapter
 
 
-def _safe_run(cmd: List[str], timeout: int = 8) -> str:
+def _safe_run(cmd: List[str], timeout: int = 15) -> str:
     try:
         res = subprocess.run(
             cmd,
@@ -59,10 +66,65 @@ class WingetAdapter(BaseAdapter):
         extra = ""
         if constraints:
             extra = " " + " ".join(constraints)
-        return f"winget install --id {name} --exact --accept-source-agreements --accept-package-agreements{extra}"
+        return f'winget install --id "{name}" --exact --silent --accept-source-agreements --accept-package-agreements{extra}'
+
+    def update(self, name: str) -> str:
+        return f'winget upgrade --id "{name}" --exact --silent'
 
     def remove(self, name: str) -> str:
-        return f"winget uninstall --id {name} --exact"
+        return f'winget uninstall --id "{name}" --exact --silent'
+
+    def uninstall(self, name: str) -> str:
+        return self.remove(name)
+
+    def reinstall(self, name: str) -> str:
+        return f'winget install --id "{name}" --exact --force --silent'
+
+    def list_installed(self) -> List[Dict[str, Any]]:
+        if not self.is_available():
+            return []
+        out = _safe_run(["winget", "list", "--accept-source-agreements"], timeout=30)
+        apps = []
+        for line in out.splitlines():
+            line = line.strip()
+            if not line or line.startswith("Name") or line.startswith("-"):
+                continue
+            parts = [p.strip() for p in line.split("  ") if p.strip()]
+            if len(parts) >= 2:
+                apps.append({
+                    "name": parts[0],
+                    "id": parts[1],
+                    "version": parts[2] if len(parts) > 2 else "",
+                    "available": parts[3] if len(parts) > 3 else "",
+                    "source": parts[4] if len(parts) > 4 else "winget",
+                })
+        return apps
+
+    def verify(self, name: str) -> Dict[str, Any]:
+        if not self.is_available():
+            return {"installed": False, "version": None}
+        out = _safe_run(["winget", "list", "--id", name, "--exact", "--accept-source-agreements"])
+        for line in out.splitlines():
+            if name.lower() in line.lower() and not line.startswith("Name") and not line.startswith("-"):
+                parts = [p.strip() for p in line.split("  ") if p.strip()]
+                return {
+                    "installed": True,
+                    "version": parts[2] if len(parts) > 2 else None,
+                    "raw": line,
+                }
+        return {"installed": False, "version": None}
+
+    def supports_operation(self, operation: str, name_or_id: Optional[str] = None) -> bool:
+        op = operation.upper()
+        if op == "UPDATE" and name_or_id:
+            # Check for known publisher-managed packages that cannot be upgraded via WinGet
+            nid = name_or_id.lower()
+            if "anaconda" in nid:
+                return False
+        return super().supports_operation(op, name_or_id)
+
+    def supports_dry_run(self) -> bool:
+        return False
 
     def info(self, name: str) -> Dict[str, Any]:
         out = _safe_run(["winget", "show", "--id", name, "--accept-source-agreements"])

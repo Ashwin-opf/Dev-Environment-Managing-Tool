@@ -142,23 +142,25 @@ class AgentOrchestrator:
         return snapshot_engine.revert(snapshot_id)
 
     def tool_executor_run(self, command: str, timeout: int = 120) -> Dict[str, Any]:
-        """executor.run(command) → result, exit state"""
-        import subprocess
+        """executor.run(command) → result, exit state via CentralizedExecutionEngine"""
+        from execution_engine import execution_engine
         start = time.time()
         try:
-            res = subprocess.run(
-                command, shell=True, capture_output=True,
-                text=True, encoding="utf-8", errors="replace", timeout=timeout,
+            outcome = execution_engine.execute_command(
+                command=command,
+                operation="EXECUTE",
+                source="AGENT",
+                timeout=timeout,
             )
             return {
-                "success": res.returncode == 0,
-                "exit_code": res.returncode,
-                "stdout": res.stdout[:3000],
-                "stderr": res.stderr[:1000],
+                "success": outcome.success,
+                "exit_code": outcome.return_code if outcome.return_code is not None else (-1 if not outcome.success else 0),
+                "stdout": (outcome.stdout or "")[:3000],
+                "stderr": (outcome.stderr or outcome.message or "")[:1000],
                 "elapsed_s": round(time.time() - start, 2),
+                "status": outcome.status,
+                "verification": outcome.verification,
             }
-        except subprocess.TimeoutExpired:
-            return {"success": False, "exit_code": -1, "stdout": "", "stderr": "Timeout", "elapsed_s": timeout}
         except Exception as exc:
             return {"success": False, "exit_code": -1, "stdout": "", "stderr": str(exc), "elapsed_s": 0}
 

@@ -1,5 +1,5 @@
 """
-Knowledge DB – Full repair recipe set for Windows + Linux.
+populate_db.py — Knowledge DB – Full repair recipe set for Windows + Linux.
 Run this script once to create/repopulate knowledge.db.
 """
 import sys

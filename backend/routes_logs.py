@@ -35,7 +35,17 @@ def _parse_log_entries(limit: int = 200) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             if "initialized" in line.lower():
                 continue
-            entries.append({"timestamp": "", "action": "LOG", "command": line, "detail": "", "_raw": raw_lines[idx], "_file_line_idx": idx})
+            import datetime
+            ts = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+            entries.append({
+                "timestamp": ts,
+                "action": "LOG",
+                "command": line,
+                "detail": line,
+                "friendly_summary": line,
+                "_raw": raw_lines[idx],
+                "_file_line_idx": idx
+            })
     entries.sort(key=lambda item: item.get("timestamp", ""), reverse=True)
     return entries
 

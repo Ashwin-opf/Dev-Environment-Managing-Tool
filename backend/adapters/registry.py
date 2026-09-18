@@ -72,6 +72,9 @@ def get_adapter(name: str) -> Optional[BaseAdapter]:
     return None
 
 
+get_adapter_by_name = get_adapter
+
+
 def get_active_adapter_names() -> List[str]:
     """Return the names of all available package managers."""
     return [a.name for a in get_all_active_adapters()]

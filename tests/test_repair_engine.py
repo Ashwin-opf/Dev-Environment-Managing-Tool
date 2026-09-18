@@ -229,23 +229,16 @@ class TestRepairEngine(unittest.TestCase):
         from unittest.mock import patch
 
         with patch("platform.system", return_value="Windows"):
-            with patch("subprocess.run") as mock_run:
-                from unittest.mock import MagicMock
-                mock_proc = MagicMock()
-                mock_proc.stdout = ""
-                mock_proc.stderr = ""
-                mock_proc.returncode = 0
-                mock_run.return_value = mock_proc
-
+            with patch.object(self.engine, "run_elevated_operation", return_value={"ok": True, "status": "EXECUTED", "message": "Success"}) as mock_elevated:
                 # Run a sudo command
-                self.engine.run("sudo winget upgrade --all")
+                stdout, stderr, rc = self.engine.run("sudo winget upgrade --all")
 
-                # Verify that it was wrapped with PowerShell Start-Process -Verb RunAs
-                mock_run.assert_called_once()
-                called_cmd = mock_run.call_args[0][0]
-                self.assertIn("Start-Process powershell", called_cmd)
-                self.assertIn("-Verb RunAs", called_cmd)
-                self.assertNotIn("sudo winget", called_cmd)
+                # Verify that it routes to isolated elevated operation
+                mock_elevated.assert_called_once()
+                payload = mock_elevated.call_args[0][0]
+                self.assertEqual(payload["operation"], "EXECUTE_COMMAND")
+                self.assertIn("winget upgrade --all", payload["command"])
+                self.assertEqual(rc, 0)
 
 if __name__ == "__main__":
     unittest.main()

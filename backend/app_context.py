@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 from repair_engine import RepairEngine
-from scanner import SystemScanner
+from scanner import scanner, SystemScanner
 from safety import SafetyLayer
 from vector_search import VectorSearch
 
@@ -28,6 +28,5 @@ def _prepare_database(db_path: Path):
 _prepare_database(DB_PATH)
 
 engine = RepairEngine(DB_PATH)
-scanner = SystemScanner()
 safety = SafetyLayer()
 vector_searcher = VectorSearch(DB_PATH)

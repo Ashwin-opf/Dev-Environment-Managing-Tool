@@ -263,8 +263,9 @@ class DevToolsManager:
     and auto-discovers local host developer tools.
     """
 
-    def __init__(self, store_path: Optional[Path] = None) -> None:
+    def __init__(self, store_path: Optional[Path] = None, auto_discover: Optional[bool] = None) -> None:
         self._store_path = Path(store_path) if store_path else _DEFAULT_STORE
+        self._auto_discover = auto_discover if auto_discover is not None else (store_path is None)
         self._apps: dict[str, dict] = {}
         self._load()
 
@@ -400,8 +401,11 @@ class DevToolsManager:
             "uninstall_command": record.get("uninstall_command", ""),
         }
 
-    def list_managed_apps(self) -> list:
+    def list_managed_apps(self, include_system: Optional[bool] = None) -> list:
         """Return all tracked managed apps merged with auto-discovered local host apps."""
+        do_discover = self._auto_discover if include_system is None else include_system
+        if not do_discover:
+            return list(self._apps.values())
         combined = {}
         # 1. First add real detected system apps on the host machine
         for app in self._discover_system_installed_apps():

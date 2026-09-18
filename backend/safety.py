@@ -309,6 +309,92 @@ def log_safety_override(action: str, original_result: str, reason: str):
             pass
 
 
+def is_natural_language_command(cmd: str) -> bool:
+    """Detect if a string is human-readable/natural language advice rather than a real executable shell command."""
+    if not cmd or not isinstance(cmd, str):
+        return False
+    s = cmd.strip()
+    if not s:
+        return False
+
+    # Obvious comment
+    if s.startswith("#"):
+        return True
+
+    # Check for sentence ending punctuation
+    has_sentence_period = s.endswith(".") and not any(s.endswith(ext) for ext in [".exe", ".bat", ".cmd", ".ps1", ".sh", ".py", ".js"])
+    
+    nl_phrases = [
+        "is installed",
+        "are installed",
+        "is currently active",
+        "permission is required",
+        "permission required",
+        "administrator permission",
+        "as administrator",
+        "review path",
+        "review configuration",
+        "review python",
+        "multiple versions",
+        "multiple distinct",
+        "missing from the system",
+        "missing from path",
+        "detected across system",
+        "before changing it",
+        "manual review required",
+        "no automated command",
+        "reinstall or restore",
+        "inspect ",
+        "unable to ",
+        "failed to ",
+        "please install",
+        "please use",
+        "cannot be upgraded",
+        "add ",
+        "by downloading",
+        "download the",
+        "downloading ",
+        "installer ",
+        "running it",
+        "and running",
+        "go to ",
+        "navigate to ",
+        "visit ",
+        "refer to ",
+        "you can ",
+        "you should ",
+        "you need to ",
+        "make sure ",
+        "ensure that ",
+    ]
+    s_lower = s.lower()
+    for phrase in nl_phrases:
+        if phrase in s_lower:
+            return True
+
+    # If it has multiple spaces and sentence period
+    if has_sentence_period and len(s.split()) > 3:
+        return True
+
+    # Check first word: shell commands start with an executable, path, or flag/variable
+    first_word = s.split()[0].strip("\"'").rstrip(":,")
+    
+    # Known natural language words that are definitely not commands
+    nl_first_words = {
+        "git", "mysql", "google", "multiple", "administrator", "review", 
+        "python", "node", "docker", "java", "vscode", "please", "manual",
+        "this", "the", "an", "a", "all", "warning", "error", "note", "info"
+    }
+    if first_word.lower() in nl_first_words:
+        tokens = s.split()
+        if len(tokens) >= 2:
+            second_word = tokens[1].lower().rstrip(":,")
+            if second_word in {"is", "server", "chrome", "versions", "permission", "path", "precedence", "distinct", "installed", "detected", "required"}:
+                return True
+
+    return False
+
+
 class SafetyLayer:
     """
     Returns (blocked: bool, reason: str) for a given (command, risk_level).
@@ -331,8 +417,23 @@ class SafetyLayer:
         compiled = [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
         return any(pattern.search(command) for pattern in compiled)
 
-    def explain_block(self, command: str, risk: str = "Low", action_key: str | None = None) -> dict[str, str]:
-        blocked, reason = self.validate(command, risk, action_key=action_key)
+    def _is_static_trusted(self, command: str) -> bool:
+        """Check if command matches trusted static maintenance/package operations."""
+        cmd_lower = command.strip().lower()
+        trusted_prefixes = (
+            "winget install", "winget upgrade", "winget uninstall", "winget list",
+            "choco install", "choco upgrade", "choco uninstall",
+            "apt-get install", "apt-get upgrade", "apt-get update", "apt install", "apt upgrade", "apt update",
+            "dnf install", "dnf upgrade", "dnf update",
+            "pacman -s", "pacman -syu", "pacman -r",
+            "brew install", "brew upgrade", "brew update",
+            "ipconfig /flushdns", "sfc /scannow", "dism /online",
+            "py --version", "python --version", "java -version", "node --version", "git --version", "docker --version",
+        )
+        return any(cmd_lower.startswith(prefix) for prefix in trusted_prefixes)
+
+    def explain_block(self, command: str, risk: str = "Low", action_key: str | None = None, source: str = "DYNAMIC_DB") -> dict[str, str]:
+        blocked, reason = self.validate(command, risk, action_key=action_key, source=source)
         result = {
             "blocked": str(blocked).lower(),
             "command": command,
@@ -343,7 +444,9 @@ class SafetyLayer:
             result["recommended_fix"] = "Command passed safety validation."
             return result
         lower = reason.lower()
-        if action_key == "system_update" or "safe mode blocked" in lower:
+        if "natural-language" in lower:
+            result["recommended_fix"] = "Informational message cannot be executed as a command."
+        elif action_key == "system_update" or "safe mode blocked" in lower:
             result["recommended_fix"] = (
                 "Package updates are blocked by host-protection safe mode unless the command "
                 "matches an approved OS package-manager update pattern and is run with explicit "
@@ -356,24 +459,30 @@ class SafetyLayer:
             result["recommended_fix"] = "Refresh OS adaptation so PC Doc selects a command for your current operating system."
         return result
 
-    def validate(self, command: str, risk: str = "Low", action_key: str | None = None) -> tuple[bool, str]:
-        blocked, reason = self._validate_internal(command, risk, action_key)
+    def validate(self, command: str, risk: str = "Low", action_key: str | None = None, source: str = "DYNAMIC_DB") -> tuple[bool, str]:
+        blocked, reason = self._validate_internal(command, risk, action_key, source)
         if blocked:
+            # Natural language is never bypassable
+            if "natural-language" in reason.lower():
+                return True, reason
             from feature_flags import ENABLE_DEV_MODE
             if ENABLE_DEV_MODE:
                 log_safety_override(command, f"Blocked: {reason}", "DEVELOPMENT_MODE Safety Bypass")
                 return False, f"WARNING: {reason}"
         return blocked, reason
 
-    def _validate_internal(self, command: str, risk: str = "Low", action_key: str | None = None) -> tuple[bool, str]:
+    def _validate_internal(self, command: str, risk: str = "Low", action_key: str | None = None, source: str = "DYNAMIC_DB") -> tuple[bool, str]:
         cmd_stripped = command.strip()
         if not cmd_stripped:
             return True, "Empty command."
 
+        if is_natural_language_command(cmd_stripped):
+            return True, "Cannot execute natural-language display string as command."
+
         # Check subshells recursively to prevent nested command execution bypasses
         subshells = extract_subshells(command)
         for sub in subshells:
-            blocked, reason = self.validate(sub, risk, action_key)
+            blocked, reason = self.validate(sub, risk, action_key, source)
             if blocked:
                 return True, f"Blocked subshell execution: {reason}"
 
@@ -388,6 +497,11 @@ class SafetyLayer:
         safe_mode = os.getenv("PC_DOCTOR_SAFE_MODE", "").lower() in {"1", "true", "yes"}
         allow_host_system_changes = os.getenv("PC_DOCTOR_ALLOW_HOST_SYSTEM_CHANGES", "").lower() in {"1", "true", "yes"}
 
+        # ── Trust Model: Static DB vs Dynamic DB ──
+        # Commands originating from Static DB (predefined, verified recipes) are trusted
+        # and do not pass through generic host-protection safe-mode blocks.
+        is_static = (source.upper() == "STATIC_DB") or self._is_static_trusted(command)
+
         for stmt in statements:
             if not stmt:
                 continue
@@ -398,19 +512,12 @@ class SafetyLayer:
             exe, args = extract_executable_and_args(stmt)
             exe_lower = exe.lower()
 
-            # Block executing script files located in user-writable regions
-            if is_blocked_script_execution(exe):
-                return True, f"Executing local scripts (`{exe}`) is blocked for safety."
-            for arg in args:
-                if is_blocked_script_execution(arg):
-                    return True, f"Executing script file `{arg}` in writable directory is blocked."
-
-            # 1. Hard blacklist – always block
+            # 1. Hard blacklist – ALWAYS block regardless of source
             for pattern in self.blacklist:
                 if pattern.search(stmt_str):
                     return True, f"Command matches dangerous pattern: `{pattern.pattern}`"
 
-            # 2. Blacklisted binaries isolation
+            # 2. Blacklisted binaries isolation (formatting, raw disk wipes, etc.)
             BLACKLIST_BINARIES = {
                 "mkfs", "fdisk", "parted", "gparted", "mkswap", "dd", "rmmod", "format", "reboot", "shutdown"
             }
@@ -426,6 +533,22 @@ class SafetyLayer:
                         if arg in ("/", "/*", "/etc", "/etc/", "/boot", "/boot/", "/var", "/var/", "/usr", "/usr/"):
                             return True, f"Destructive directory removal of `{arg}` is blocked."
 
+            # If Static DB: trusted recipe, bypass generic host-protection and script blocks
+            if is_static:
+                # Still enforce OS mismatch
+                if is_windows and any(p.search(stmt_str) for p in self.linux_only):
+                    return True, "Linux-only command detected on Windows."
+                if not is_windows and any(p.search(stmt_str) for p in self.windows_only):
+                    return True, "Windows-only command detected on non-Windows OS."
+                continue
+
+            # Block executing script files located in user-writable regions (Dynamic DB only)
+            if is_blocked_script_execution(exe):
+                return True, f"Executing local scripts (`{exe}`) is blocked for safety."
+            for arg in args:
+                if is_blocked_script_execution(arg):
+                    return True, f"Executing script file `{arg}` in writable directory is blocked."
+
             # 3. High-risk patterns – always block in automated repair
             for pattern in self.high_risk:
                 if pattern.search(stmt_str):
@@ -434,8 +557,6 @@ class SafetyLayer:
             # 4. Check if statement matches approved maintenance for this action_key
             is_approved = False
             if action_key and self._matches_approved_maintenance(stmt_str, action_key):
-                # driver_package_update is explicitly user-initiated from the Drivers page.
-                # Allow kernel/firmware packages for that action key only.
                 if action_key != "driver_package_update":
                     for pattern in KERNEL_FIRMWARE_PACKAGE_PATTERNS:
                         if re.search(pattern, stmt_lower, re.IGNORECASE):
@@ -476,5 +597,25 @@ class SafetyLayer:
                 for pattern in self.macos_only:
                     if pattern.search(stmt_str):
                         return True, "macOS-only command detected on Linux."
+
+        return False, "OK"
+
+
+    @staticmethod
+    def _is_static_trusted(command: str) -> bool:
+        """Recognize standard verified Static DB package manager and runtime operations."""
+        lower = command.strip().lower()
+        if lower.startswith("winget ") or "|| winget " in lower:
+            return True
+        if any(lower.startswith(v) for v in (
+            "python --version", "py --version", "python -v", "node --version",
+            "git --version", "java -version", "java --version", "rustc --version",
+            "cargo --version", "docker --version", "ipconfig /flushdns",
+            "powershell -command \"start-service", "systemctl status",
+        )):
+            return True
+        if any(lower.startswith(p) for p in ("apt-get install", "apt install", "dnf install", "pacman -s", "brew install")):
+            return True
+        return False
 
         return False, "OK"

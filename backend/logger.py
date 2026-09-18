@@ -1,11 +1,15 @@
 """
 Logger – Structured JSON log for all PC Doctor actions.
-Writes one JSON line per action to pc_doctor.log.
+Writes one JSON line per action to pc_doctor.log conforming to Section 22.
 """
+from __future__ import annotations
+
 import json
 import datetime
 import os
 from pathlib import Path
+from typing import Any, Dict, Optional
+
 
 def get_log_file() -> Path:
     log_dir = os.getenv("LOG_PATH", "").strip()
@@ -57,14 +61,67 @@ def export_logs_text() -> str:
     return "\n".join(_read_log_lines())
 
 
-def log_action(action: str, command: str, detail: str = "", friendly_summary: str = "") -> None:
-    """Append a single log entry to pc_doctor.log."""
-    entry = {
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z"),
-        "action": action,
-        "command": command,
-        "detail": detail,
-        "friendly_summary": friendly_summary,
-    }
-    with open(LOG_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+def log_action(
+    action: str,
+    command: str,
+    detail: str = "",
+    friendly_summary: str = "",
+    *,
+    operation: str = "MUTATION",
+    application: str = "",
+    identity: str = "",
+    recipe_id: str = "",
+    source: str = "STATIC_DB",
+    return_code: Optional[int] = None,
+    versions: Optional[Dict[str, Any]] = None,
+    verification: Optional[Dict[str, Any]] = None,
+    tier: str = "TIER_1_FAST",
+    trust: float = 1.0,
+    risk: float = 0.2,
+    confidence: float = 1.0,
+) -> None:
+    """Append a single structured log entry conforming to the 16 architectural fields."""
+    try:
+        from structured_logger import structured_logger
+        structured_logger.log_event(
+            operation=operation,
+            application=application or friendly_summary or "System",
+            identity=identity or application,
+            status=action,
+            message=detail or friendly_summary,
+            command=command,
+            recipe_id=recipe_id,
+            source=source,
+            return_code=return_code,
+            versions=versions,
+            verification=verification,
+            tier=tier,
+            trust=trust,
+            risk=risk,
+            confidence=confidence,
+        )
+    except Exception:
+        # Fallback raw write
+        entry = {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+            "action": action,
+            "command": command,
+            "detail": detail,
+            "friendly_summary": friendly_summary,
+            "operation": operation,
+            "application": application or "System",
+            "identity": identity,
+            "recipe_id": recipe_id,
+            "source": source,
+            "status": action,
+            "message": detail,
+            "return_code": return_code,
+            "versions": versions or {},
+            "verification": verification or {},
+            "tier": tier,
+            "trust": trust,
+            "risk": risk,
+            "confidence": confidence,
+        }
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
