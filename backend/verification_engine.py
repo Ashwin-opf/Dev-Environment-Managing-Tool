@@ -305,31 +305,33 @@ class AuthoritativeVerificationEngine:
 
         # Shadowing Detection: verify first match on PATH matches expected binary
         if identity and found_path:
-            expected_exe = identity.get_expected_executable_path(platform.system())
+            target_plat = recipe.os if (recipe and recipe.os and str(recipe.os).strip().lower() not in ("any", "unknown", "")) else platform.system()
+            expected_exe = identity.get_expected_executable_path(target_plat)
             if expected_exe and os.path.isfile(expected_exe):
-                norm_found = os.path.normcase(os.path.normpath(found_path))
-                norm_expected = os.path.normcase(os.path.normpath(expected_exe))
-                if norm_found != norm_expected:
-                    recommendation = (
-                        f"Reorder PATH so that '{os.path.dirname(expected_exe)}' precedes '{os.path.dirname(found_path)}'."
-                    )
-                    return VerificationResult(
-                        status=VerificationStatus.VERIFICATION_FAILED,
-                        level=level,
-                        executable_found=True,
-                        version_detected=None,
-                        functional_check_passed=False,
-                        problem_cleared=False,
-                        timed_out=False,
-                        attempts=attempt,
-                        message=f"Executable '{exec_name}' at '{found_path}' shadows expected installation '{expected_exe}' due to PATH ordering.",
-                        details={
-                            "shadowing_issue": "SHADOWED_BY_PREVIOUS_INSTALLATION",
-                            "shadowed_by": found_path,
-                            "expected_path": expected_exe,
-                            "recommendation": recommendation,
-                        },
-                    )
+                if not identity.matches_expected_executable(found_path, target_plat):
+                    norm_found = os.path.normcase(os.path.normpath(found_path))
+                    norm_expected = os.path.normcase(os.path.normpath(expected_exe))
+                    if norm_found != norm_expected:
+                        recommendation = (
+                            f"Reorder PATH so that '{os.path.dirname(expected_exe)}' precedes '{os.path.dirname(found_path)}'."
+                        )
+                        return VerificationResult(
+                            status=VerificationStatus.VERIFICATION_FAILED,
+                            level=level,
+                            executable_found=True,
+                            version_detected=None,
+                            functional_check_passed=False,
+                            problem_cleared=False,
+                            timed_out=False,
+                            attempts=attempt,
+                            message=f"Executable '{exec_name}' at '{found_path}' shadows expected installation '{expected_exe}' due to PATH ordering.",
+                            details={
+                                "shadowing_issue": "SHADOWED_BY_PREVIOUS_INSTALLATION",
+                                "shadowed_by": found_path,
+                                "expected_path": expected_exe,
+                                "recommendation": recommendation,
+                            },
+                        )
 
         # 2. Run version command with effective environment
         actual_cmd = list(vcmd)

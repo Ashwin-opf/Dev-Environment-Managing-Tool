@@ -23,6 +23,7 @@ Covers all 16 required tests:
 
 import logging
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -463,10 +464,19 @@ def test_environment_refresh_error_logged_not_swallowed(caplog):
 
 # ── Test 16: Full Verification Pipeline Git Mock ─────────────────────────────
 
-def test_full_verification_pipeline_git_mock():
-    """End-to-end mock test: Git repair -> effective env refresh -> probe with effective env -> L5 rescan -> VERIFIED."""
+@pytest.mark.parametrize("target_os, expected_pm, expected_args, mock_exe, mock_env_path, ver_stdout", [
+    ("Linux", "apt", ["install", "-y", "git"], "/usr/bin/git", "/usr/bin:/usr/local/bin:/bin", "git version 2.44.0"),
+    ("Darwin", "brew", ["install", "git"], "/usr/local/bin/git", "/usr/local/bin:/usr/bin:/bin", "git version 2.44.0"),
+    ("Windows", "winget", ["install", "--id", "Git.Git"], r"C:\Program Files\Git\cmd\git.exe", r"C:\Program Files\Git\cmd;C:\Windows\system32", "git version 2.44.0.windows.1"),
+])
+def test_full_verification_pipeline_git_mock(target_os, expected_pm, expected_args, mock_exe, mock_env_path, ver_stdout):
+    """
+    End-to-end mock test: Git repair -> effective env refresh -> probe with effective env -> L5 rescan -> VERIFIED.
+    Expected paths and package-manager values are determined strictly from the recipe's target OS,
+    independent of the host platform running the test.
+    """
     engine = AuthoritativeVerificationEngine()
-    mock_effective_env = {"PATH": r"C:\Program Files\Git\cmd;C:\Windows\system32"}
+    mock_effective_env = {"PATH": mock_env_path}
 
     mock_diag = ToolDiagnosis(
         tool_id="git",
@@ -477,18 +487,18 @@ def test_full_verification_pipeline_git_mock():
     )
 
     with patch("verification_engine._refresh_verification_environment", return_value=(True, mock_effective_env, "")), \
-         patch("shutil.which", return_value=r"C:\Program Files\Git\cmd\git.exe"), \
+         patch("shutil.which", return_value=mock_exe), \
          patch("os.path.isfile", return_value=True), \
          patch("dev_environment_detector.DevEnvironmentDetector.diagnose_tool", return_value=mock_diag), \
          patch("verification_engine._run_probe") as mock_probe:
 
         # 1. Probe version: "git --version"
         ver_proc = subprocess.CompletedProcess(
-            args=["git", "--version"], returncode=0, stdout="git version 2.44.0.windows.1", stderr=""
+            args=["git", "--version"], returncode=0, stdout=ver_stdout, stderr=""
         )
         # 2. Probe functional: "git help"
         func_proc = subprocess.CompletedProcess(
-            args=[r"C:\Program Files\Git\cmd\git.exe", "help"], returncode=0, stdout="usage: git ...", stderr=""
+            args=[mock_exe, "help"], returncode=0, stdout="usage: git ...", stderr=""
         )
         mock_probe.side_effect = [(ver_proc, False), (func_proc, False)]
 
@@ -497,11 +507,11 @@ def test_full_verification_pipeline_git_mock():
             recipe_version=1,
             identity_id="git",
             operation=RecipeOperation.INSTALL,
-            os="Windows",
+            os=target_os,
             architecture="x64",
-            package_manager="winget",
-            executable="winget",
-            arguments=["install", "--id", "Git.Git"],
+            package_manager=expected_pm,
+            executable=expected_pm,
+            arguments=expected_args,
             verification_command=["git", "--version"],
         )
 
@@ -514,7 +524,7 @@ def test_full_verification_pipeline_git_mock():
 
         assert res.status == VerificationStatus.VERIFIED
         assert res.executable_found is True
-        assert res.version_detected == "git version 2.44.0.windows.1"
+        assert res.version_detected == ver_stdout
         assert res.functional_check_passed is True
         assert res.problem_cleared is True
         assert res.details.get("rescan_status") == "CLEARED"

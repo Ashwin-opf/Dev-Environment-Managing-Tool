@@ -63,11 +63,22 @@ def _make_dummy_recipe(
     target: str = "git",
     source: str = "STATIC_DB",
     os_name: str = "Any",
-    package_manager: str = "winget",
+    package_manager: Optional[str] = None,
 ) -> StructuredRecipe:
     """Helper to build structured recipes for safety testing."""
     if arguments is None:
         arguments = ["--version"]
+    if package_manager is None:
+        target_norm = os_name.lower().strip() if os_name else "any"
+        if target_norm in ("linux", "ubuntu", "debian", "fedora", "arch"):
+            package_manager = "apt"
+        elif target_norm in ("darwin", "macos", "mac"):
+            package_manager = "brew"
+        elif target_norm in ("windows", "win32"):
+            package_manager = "winget"
+        else:
+            cur_os = platform.system()
+            package_manager = "winget" if cur_os == "Windows" else ("brew" if cur_os == "Darwin" else "apt")
     return StructuredRecipe(
         recipe_id=f"rec_test_{target}",
         recipe_version=1,
@@ -268,20 +279,31 @@ def test_6_package_manager_unavailable_handled_explicitly():
     blocks with PACKAGE_MANAGER_UNAVAILABLE instead of blindly failing at execution.
     """
     # 1. Flagged via MachineState
+    cur_os = platform.system()
+    pm1 = "winget" if cur_os == "Windows" else ("brew" if cur_os == "Darwin" else "apt")
+    cmd1 = f"{pm1} install Git.Git" if cur_os == "Windows" else f"{pm1} install git"
+    recipe1 = _make_dummy_recipe(command=cmd1, os_name=cur_os, package_manager=pm1)
+
     m_state = MachineState(package_manager_available=False, pending_reboot=False, free_disk_gb=100.0)
     res = authoritative_safety.live_pre_execution_gate(
-        command="winget install Git.Git",
-        package_manager="winget",
+        command=cmd1,
+        recipe=recipe1,
+        package_manager=pm1,
         machine_state=m_state,
     )
     assert res.allowed is False
     assert res.blocked_reason == BlockedReason.PACKAGE_MANAGER_UNAVAILABLE
 
     # 2. Package manager executable not found on PATH
+    pm2 = "choco" if cur_os == "Windows" else ("port" if cur_os == "Darwin" else "dnf")
+    cmd2 = f"{pm2} install git"
+    recipe2 = _make_dummy_recipe(command=cmd2, os_name=cur_os, package_manager=pm2)
+
     with patch("shutil.which", return_value=None):
         res2 = authoritative_safety.live_pre_execution_gate(
-            command="choco install git",
-            package_manager="choco",
+            command=cmd2,
+            recipe=recipe2,
+            package_manager=pm2,
             machine_state=MachineState(package_manager_available=None, pending_reboot=False, free_disk_gb=100.0),
         )
         assert res2.allowed is False
