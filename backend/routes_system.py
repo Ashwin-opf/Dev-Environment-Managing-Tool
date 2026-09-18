@@ -961,25 +961,39 @@ async def execute_command_stream(req: ExecuteRequest):
                         event["unsupported_package_manager"] = True
 
                 if rc == 0 and event.get("status") != "USER_DECLINED_ELEVATION":
-                    try:
-                        from dev_environment_detector import dev_environment_detector
-                        post_verify = dev_environment_detector.post_repair_verify(
-                            req.command, title=req.title, scanner_instance=scanner
-                        )
-                        event["post_verification"] = post_verify
-                        if post_verify and post_verify.get("verified"):
-                            event["status"] = "VERIFIED"
-                            event["verification"] = post_verify.get("details")
-                        elif post_verify and (post_verify.get("status") == "VERIFICATION_TIMEOUT" or post_verify.get("timed_out")):
-                            event["status"] = "VERIFICATION_TIMEOUT"
-                            event["ok"] = False
-                            event["executed_but_unverified"] = True
-                            event["message"] = "Repair executed, but verification timed out."
-                        elif post_verify and not post_verify.get("verified"):
-                            event["status"] = "VERIFICATION_FAILED"
-                            event["ok"] = False
-                    except Exception as e:
-                        print("[DevEnvironmentDetector] Post repair verify stream error:", e)
+                    # ARCHITECTURAL INVARIANT: The authoritative execution engine
+                    # (CentralizedExecutionEngine / stream_execute_command) sets
+                    # verification_status when it has already performed L1-L5 verification.
+                    # If that authoritative verification succeeded ("VERIFIED"), we MUST
+                    # preserve it and skip the secondary uncoordinated post_repair_verify
+                    # call, which can produce a false-negative on macOS (SIP /usr/bin/
+                    # stubs cause MULTIPLE_VERSIONS diagnosis for Homebrew-managed tools).
+                    auth_verif_status = event.get("verification_status")
+                    if auth_verif_status == "VERIFIED":
+                        # Authoritative engine already confirmed success — preserve it.
+                        event["status"] = "VERIFIED"
+                        event["ok"] = True
+                    elif auth_verif_status not in ("VERIFICATION_FAILED", "VERIFICATION_TIMEOUT"):
+                        # No authoritative verification result yet — run secondary check.
+                        try:
+                            from dev_environment_detector import dev_environment_detector
+                            post_verify = dev_environment_detector.post_repair_verify(
+                                req.command, title=req.title, scanner_instance=scanner
+                            )
+                            event["post_verification"] = post_verify
+                            if post_verify and post_verify.get("verified"):
+                                event["status"] = "VERIFIED"
+                                event["verification"] = post_verify.get("details")
+                            elif post_verify and (post_verify.get("status") == "VERIFICATION_TIMEOUT" or post_verify.get("timed_out")):
+                                event["status"] = "VERIFICATION_TIMEOUT"
+                                event["ok"] = False
+                                event["executed_but_unverified"] = True
+                                event["message"] = "Repair executed, but verification timed out."
+                            elif post_verify and not post_verify.get("verified"):
+                                event["status"] = "VERIFICATION_FAILED"
+                                event["ok"] = False
+                        except Exception as e:
+                            print("[DevEnvironmentDetector] Post repair verify stream error:", e)
             yield f"data: {json.dumps(event)}\n\n"
 
         if rc == 0:

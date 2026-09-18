@@ -223,7 +223,7 @@ def check_package_manager_available(pm_name: str) -> bool:
     if not pm_name or pm_name.lower() in ("native", "manual", "custom", "none", "unknown", "any"):
         return True
     pm = pm_name.lower().strip()
-    known_pms = {"winget", "choco", "scoop", "apt", "apt-get", "dnf", "yum", "pacman", "brew", "snap", "flatpak"}
+    known_pms = {"winget", "choco", "scoop", "apt", "apt-get", "dnf", "yum", "pacman", "brew", "snap", "flatpak", "port", "zypper"}
     if pm in known_pms:
         return shutil.which(pm) is not None
     return True
@@ -357,7 +357,7 @@ class AuthoritativeSafetyLayer:
         if package_manager and package_manager.lower() not in ("native", "custom", "none", "unknown"):
             return package_manager.lower().strip()
         cmd_lower = command.strip().lower()
-        for pm in ("winget", "choco", "scoop", "apt", "apt-get", "dnf", "yum", "pacman", "brew", "snap", "flatpak"):
+        for pm in ("winget", "choco", "scoop", "apt", "apt-get", "dnf", "yum", "pacman", "brew", "snap", "flatpak", "port", "zypper"):
             if cmd_lower.startswith(pm + " ") or f" {pm} " in cmd_lower or f"sudo {pm} " in cmd_lower:
                 return pm
         return None

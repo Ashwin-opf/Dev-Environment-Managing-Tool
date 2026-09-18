@@ -564,6 +564,25 @@ class DevEnvironmentDetector:
             discovered_exes = list(unique_exes.values())
 
         if len(discovered_exes) > 1:
+            # On macOS (Darwin), Apple SIP protects /usr/bin/ and installs immutable
+            # fallback stubs (e.g. /usr/bin/git) that cannot be removed.  When Homebrew
+            # has installed the *active* binary in /usr/local/bin (Intel) or
+            # /opt/homebrew/bin (Apple Silicon), the SIP stub is harmless noise.
+            # Filter it out before evaluating distinct roots to avoid a false
+            # MULTIPLE_VERSIONS diagnosis.
+            if platform.system() == "Darwin":
+                active_on_path = shutil.which(identity.executable_name)
+                if active_on_path:
+                    active_lower = active_on_path.lower()
+                    is_homebrew_active = (
+                        "/usr/local/" in active_lower or "/opt/homebrew/" in active_lower
+                    )
+                    if is_homebrew_active:
+                        discovered_exes = [
+                            p for p in discovered_exes
+                            if not Path(os.path.realpath(p)).as_posix().startswith("/usr/bin/")
+                        ]
+
             distinct_roots = set()
             for p in discovered_exes:
                 try:

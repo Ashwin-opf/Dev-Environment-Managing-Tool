@@ -598,7 +598,11 @@ def run_cross_platform_validation(stage: str = "8.1", output_prefix: Optional[st
         evidence_path = Path(output_file)
     else:
         prefix = output_prefix or (f"stage{stage.replace('.', '_')}_" if stage else "stage8_1_")
-        evidence_filename = f"{prefix}{host_os.lower()}_evidence.json"
+        # On macOS, platform.system() returns "Darwin".  Normalize to "macos" so
+        # the evidence file is consistently named stage8_1_macos_evidence.json
+        # regardless of whether it runs on an Intel or Apple Silicon hosted runner.
+        plat_key = "macos" if host_os.lower() == "darwin" else host_os.lower()
+        evidence_filename = f"{prefix}{plat_key}_evidence.json"
         evidence_path = WORKSPACE_ROOT / "scratch" / evidence_filename
 
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
