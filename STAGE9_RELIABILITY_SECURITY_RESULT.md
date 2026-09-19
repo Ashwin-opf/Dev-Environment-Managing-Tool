@@ -8,14 +8,15 @@
 
 ## 1. Test Execution Summary
 
-| Test Suite / Target | Passed | Skipped | Failed | Collection Errors | Status |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Windows 11 Full Suite** | 499 | 2 | 0 | 0 | **PASS** |
-| **Stage 9 Focused Regression Suite** | 22 | 0 | 0 | 0 | **PASS** |
-| **Ubuntu 24.04 (Hosted Validation)** | 492 | 9 | 0 | 0 | **PASS** |
-| **macOS (Hosted Validation)** | 492 | 9 | 0 | 0 | **PASS** |
+| Test Suite / Target | Passed | Skipped | Failed | Collection Errors | Status | Evidence / Run Link |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Windows 11 Full Suite** | 499 | 2 | 0 | 0 | **PASS** | Native execution via Python 3.13.7 (pytest 9.1.1) |
+| **Stage 9 Focused Regression Suite** | 22 | 0 | 0 | 0 | **PASS** | `tests/test_stage9_reliability_security.py` (22/22 passed) |
+| **Ubuntu 24.04 (Hosted Validation)** | 492 | 9 | 0 | 0 | **PASS** | [GitHub Actions Run #8](https://github.com/Ashwin-opf/Dev-Environment-Managing-Tool/actions/runs/35428200740) (Commit `d76eac3`) |
+| **macOS (Hosted Validation)** | 492 | 9 | 0 | 0 | **PASS** | [GitHub Actions Run #7](https://github.com/Ashwin-opf/Dev-Environment-Managing-Tool/actions/runs/35428281810) (Commit `d76eac3`) |
 
-*Note on skips: 2 tests on Windows skip purely Linux/macOS specific privilege tests (e.g. pkexec / AppleScript); 9 skips on Linux and macOS skip Windows-specific registry/elevation tests.*
+*Total test cases across platforms: 501. Zero failures and zero collection errors on all 3 platforms.*  
+*Node.js 20 deprecation warnings: 0 (All workflow actions successfully updated to `actions/checkout@v7`, `actions/setup-python@v7`, `actions/upload-artifact@v6`).*
 
 ---
 
