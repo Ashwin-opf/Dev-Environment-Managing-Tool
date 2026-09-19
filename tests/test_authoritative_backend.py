@@ -105,9 +105,11 @@ class TestRecipeResolver(unittest.TestCase):
         self.assertEqual(vscode_repair.repair_strategy, RepairStrategy.REINSTALL)
 
     def test_command_string_generation(self):
+        cur_os = platform.system()
         recipe = recipe_resolver.resolve_recipe("git", RecipeOperation.INSTALL)
         cmd = recipe.to_command_string()
-        self.assertIn("Git.Git", cmd)
+        expected_pkg = "Git.Git" if cur_os == "Windows" else "git"
+        self.assertIn(expected_pkg, cmd)
         self.assertNotIn("||", cmd)  # No blind fallbacks
 
 
