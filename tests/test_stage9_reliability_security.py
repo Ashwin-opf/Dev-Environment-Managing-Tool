@@ -384,10 +384,17 @@ class TestStage9ReliabilitySecurity(unittest.TestCase):
     # 11. Stale package-manager state rejection
     def test_11_stale_package_manager_state_rejection(self):
         """When a required package manager is missing, the safety gate blocks with PACKAGE_MANAGER_UNAVAILABLE."""
+        cur_os = platform.system()
+        pm_map = {
+            "Windows": ("winget install Git.Git", "winget"),
+            "Linux": ("apt-get install -y git", "apt"),
+            "Darwin": ("brew install git", "brew"),
+        }
+        cmd, pm = pm_map.get(cur_os, ("apt-get install -y git", "apt"))
         with patch("shutil.which", return_value=None):
             gate_res = authoritative_safety.live_pre_execution_gate(
-                command="winget install Git.Git",
-                package_manager="winget",
+                command=cmd,
+                package_manager=pm,
                 allow_cached=False,
             )
         self.assertFalse(gate_res.allowed)
