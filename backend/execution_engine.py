@@ -644,6 +644,12 @@ class CentralizedExecutionEngine:
         timeout: int = 120,
         original_problem: Optional[str] = None,
         trigger_shce: bool = True,
+        target_name: Optional[str] = None,
+        pm: Optional[str] = None,
+        tier: Optional[Any] = None,
+        owner_id: Optional[str] = None,
+        approved: bool = False,
+        **kwargs: Any,
     ) -> ExecutionOutcome:
         """
         The single authoritative entrypoint for executing any command or mutation.
@@ -652,7 +658,7 @@ class CentralizedExecutionEngine:
         and structured telemetry logging.
         """
         clean_cmd = (command or "").strip()
-        target_name = target or self._infer_target(clean_cmd, title)
+        target_name = target or target_name or self._infer_target(clean_cmd, title)
 
         # 1. Empty, comment, natural language, or destructive syntax check
         from authoritative_safety import is_natural_language_command, HARD_BLACKLIST
@@ -681,7 +687,7 @@ class CentralizedExecutionEngine:
                 verification_status="NOT_RUN",
                 operation=operation,
                 target=target_name,
-                command=command,
+                command=clean_cmd,
                 return_code=1,
                 stdout="",
                 stderr=reason,
@@ -695,7 +701,7 @@ class CentralizedExecutionEngine:
             )
 
         # 2. Recipe resolution / synthesis
-        pm = self._detect_pm(clean_cmd)
+        pm = pm or self._detect_pm(clean_cmd)
         op_enum = RecipeOperation.REPAIR
         try:
             op_enum = RecipeOperation(operation.upper())
@@ -728,13 +734,16 @@ class CentralizedExecutionEngine:
         machine_state = state_refresher.refresh_machine_state(target_identity=target_name)
         requires_elev = bool(elevate or scope == "machine")
         risk_score = compute_live_risk(recipe, machine_state=machine_state, requires_elevation=requires_elev)
-        tier, tier_reason = select_execution_tier(
-            recipe=recipe,
-            trust_score=1.0 if source == "STATIC_DB" else 0.85,
-            risk_score=risk_score,
-            confidence_score=1.0,
-            machine_state=machine_state,
-        )
+        if tier is None:
+            tier, tier_reason = select_execution_tier(
+                recipe=recipe,
+                trust_score=1.0 if source == "STATIC_DB" else 0.85,
+                risk_score=risk_score,
+                confidence_score=1.0,
+                machine_state=machine_state,
+            )
+        else:
+            tier_reason = f"Explicit tier: {tier}"
 
         if tier == ExecutionTier.BLOCKED:
             return ExecutionOutcome(
@@ -770,8 +779,12 @@ class CentralizedExecutionEngine:
             machine_state=machine_state,
             package_manager=pm,
             target_resource=target_name,
+            owner_id=owner_id,
         )
         if not safety_res.allowed:
+            blocked_class = safety_res.blocked_reason.value if safety_res.blocked_reason else "SAFETY_POLICY_REJECTED"
+            if safety_res.blocked_reason == BlockedReason.RESOURCE_LOCKED:
+                blocked_class = "RESOURCE_BUSY"
             structured_logger.log_event(
                 operation=operation,
                 application=target_name,
@@ -792,20 +805,51 @@ class CentralizedExecutionEngine:
                 return_code=None,
                 stdout="",
                 stderr=safety_res.message,
-                classification=safety_res.blocked_reason.value if safety_res.blocked_reason else "SAFETY_POLICY_REJECTED",
+                classification=blocked_class,
                 verification={},
                 tier="BLOCKED",
                 trust=0.0,
                 risk=100.0,
                 confidence=0.0,
                 message=safety_res.message,
-                details={"blocked_reason": safety_res.blocked_reason.value if safety_res.blocked_reason else "SAFETY_BLOCKED"},
+                details={"blocked_reason": blocked_class},
             )
 
         # 6. Resource lock
-        owner_id = f"exec_{target_name}_{int(time.time()*1000)}"
+        owner_id = owner_id or f"exec_{target_name}_{int(time.time()*1000)}"
         resources = [f"pm:{pm.lower()}", f"tool:{target_name.lower()}"]
-        resource_lock_mgr.acquire_resources(owner_id, resources, timeout=3.0)
+        lock_acquired = resource_lock_mgr.acquire_resources(owner_id, resources, timeout=3.0)
+        if not lock_acquired:
+            msg = f"Resource lock conflict: tool '{target_name}' or package manager '{pm}' is currently busy with another operation."
+            structured_logger.log_event(
+                operation=operation,
+                application=target_name,
+                identity=target_name,
+                status="BLOCKED",
+                message=msg,
+                command=clean_cmd,
+                source=source,
+            )
+            return ExecutionOutcome(
+                success=False,
+                status="BLOCKED",
+                execution_status="NOT_RUN",
+                verification_status="NOT_RUN",
+                operation=operation,
+                target=target_name,
+                command=clean_cmd,
+                return_code=None,
+                stdout="",
+                stderr=msg,
+                classification="RESOURCE_BUSY",
+                verification={},
+                tier=tier.value,
+                trust=0.9,
+                risk=risk_score,
+                confidence=1.0,
+                message=msg,
+                details={"blocked_reason": "RESOURCE_BUSY", "locked_resources": resources},
+            )
 
         out = ""
         err = ""
@@ -819,7 +863,8 @@ class CentralizedExecutionEngine:
 
             if tier == ExecutionTier.TIER_3_ELEVATED_ADMIN or elevate or scope == "machine":
                 out, err, rc = privilege_manager.run_with_elevation(clean_cmd, title=title or target_name)
-                if rc == 1223 or "permission was not granted" in (err or "").lower():
+                if privilege_manager.is_cancelled_by_user(rc, err) or rc == 1223 or "permission was not granted" in (err or "").lower():
+                    cancel_rc = rc if rc != 0 else 1223
                     structured_logger.log_event(
                         operation=operation,
                         application=target_name,
@@ -827,7 +872,7 @@ class CentralizedExecutionEngine:
                         status="USER_DECLINED_ELEVATION",
                         message="Administrator permission was declined by user. System state was not changed.",
                         command=clean_cmd,
-                        return_code=1223,
+                        return_code=cancel_rc,
                     )
                     return ExecutionOutcome(
                         success=False,
@@ -837,7 +882,7 @@ class CentralizedExecutionEngine:
                         operation=operation,
                         target=target_name,
                         command=clean_cmd,
-                        return_code=1223,
+                        return_code=cancel_rc,
                         stdout=out,
                         stderr=err or "Administrator permission was not granted.",
                         classification="USER_DECLINED_ELEVATION",
@@ -855,6 +900,7 @@ class CentralizedExecutionEngine:
                     err = ""
                     rc = 0
                 else:
+                    is_proc_timeout = False
                     try:
                         proc = subprocess.run(
                             clean_cmd,
@@ -872,6 +918,7 @@ class CentralizedExecutionEngine:
                         out = ""
                         err = f"Command timed out after {timeout} seconds."
                         rc = 124
+                        is_proc_timeout = True
                     except Exception as exc:
                         out = ""
                         err = str(exc)
@@ -940,13 +987,24 @@ class CentralizedExecutionEngine:
                 success = False
 
             explanation = classified.get("explanation", "") if isinstance(classified, dict) else ""
-            if final_status == "VERIFICATION_TIMEOUT":
+            if is_proc_timeout or rc == 124:
+                final_classification = "EXECUTION_TIMEOUT"
+                final_status = "EXECUTION_FAILED"
+                msg = f"{operation} for {target_name} timed out after {timeout} seconds."
+            elif final_status == "VERIFICATION_TIMEOUT":
+                final_classification = "VERIFICATION_TIMEOUT"
                 msg = f"{operation} for {target_name} executed, but verification timed out after {verif_res.attempts if verif_res else policy.max_attempts} attempts."
+            elif final_status == "VERIFICATION_FAILED":
+                final_classification = "VERIFICATION_FAILED"
+                msg = f"{operation} for {target_name} executed, but functional verification failed."
             elif success:
+                final_classification = classified.get("classification", "SUCCESS") if isinstance(classified, dict) else "SUCCESS"
                 msg = f"{operation} for {target_name} confirmed and verified."
             elif rc != 0:
+                final_classification = classified.get("classification", "COMMAND_EXECUTION_FAILED") if isinstance(classified, dict) else "COMMAND_EXECUTION_FAILED"
                 msg = f"{operation} for {target_name} failed: {explanation or err}"
             else:
+                final_classification = "VERIFICATION_FAILED"
                 msg = f"{operation} for {target_name} executed, but functional verification failed."
 
             # 10. State Refresh (RESCAN)
@@ -981,7 +1039,7 @@ class CentralizedExecutionEngine:
                 return_code=rc,
                 stdout=out,
                 stderr=err,
-                classification=classified.get("classification", "SUCCESS") if isinstance(classified, dict) else "SUCCESS",
+                classification=final_classification,
                 verification=verif_dict,
                 tier=tier.value,
                 trust=0.9,
@@ -996,7 +1054,10 @@ class CentralizedExecutionEngine:
             )
 
         finally:
-            resource_lock_mgr.release_resources(owner_id, resources)
+            if lock_acquired:
+                resource_lock_mgr.release_resources(owner_id, resources)
+
+    execute_command_pipeline = execute_command
 
     def stream_execute_command(
         self,
@@ -1010,6 +1071,11 @@ class CentralizedExecutionEngine:
         timeout: int = 1800,
         original_problem: Optional[str] = None,
         trigger_shce: bool = True,
+        target_name: Optional[str] = None,
+        pm: Optional[str] = None,
+        tier: Optional[Any] = None,
+        owner_id: Optional[str] = None,
+        **kwargs: Any,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Executes a command and yields real-time event dictionaries:
@@ -1018,7 +1084,7 @@ class CentralizedExecutionEngine:
         yield {"type": "done", "returncode": int, "stdout": str, "stderr": str, "ok": bool, "status": str, ...}
         """
         clean_cmd = (command or "").strip()
-        target_name = target or self._infer_target(clean_cmd, title)
+        target_name = target or target_name or self._infer_target(clean_cmd, title)
 
         yield {"type": "start", "command": clean_cmd, "title": title or target_name}
         yield {"type": "stage", "stage": "PREPARING", "message": f"Preparing {operation} for {target_name}..."}
@@ -1047,7 +1113,7 @@ class CentralizedExecutionEngine:
             return
 
         # 2. Recipe resolution / synthesis
-        pm = self._detect_pm(clean_cmd)
+        pm = pm or self._detect_pm(clean_cmd)
         op_enum = RecipeOperation.REPAIR
         try:
             op_enum = RecipeOperation(operation.upper())
@@ -1080,13 +1146,16 @@ class CentralizedExecutionEngine:
         machine_state = state_refresher.refresh_machine_state(target_identity=target_name)
         requires_elev = bool(elevate or scope == "machine")
         risk_score = compute_live_risk(recipe, machine_state=machine_state, requires_elevation=requires_elev)
-        tier, tier_reason = select_execution_tier(
-            recipe=recipe,
-            trust_score=1.0 if source == "STATIC_DB" else 0.85,
-            risk_score=risk_score,
-            confidence_score=1.0,
-            machine_state=machine_state,
-        )
+        if tier is None:
+            tier, tier_reason = select_execution_tier(
+                recipe=recipe,
+                trust_score=1.0 if source == "STATIC_DB" else 0.85,
+                risk_score=risk_score,
+                confidence_score=1.0,
+                machine_state=machine_state,
+            )
+        else:
+            tier_reason = f"Explicit tier: {tier}"
 
         if tier == ExecutionTier.BLOCKED:
             yield {"type": "log", "text": f"[Tier Selection Blocked]: {tier_reason}", "stream": "stderr"}
@@ -1115,8 +1184,12 @@ class CentralizedExecutionEngine:
             machine_state=machine_state,
             package_manager=pm,
             target_resource=target_name,
+            owner_id=owner_id,
         )
         if not safety_res.allowed:
+            blocked_class = safety_res.blocked_reason.value if safety_res.blocked_reason else "SAFETY_POLICY_REJECTED"
+            if safety_res.blocked_reason == BlockedReason.RESOURCE_LOCKED:
+                blocked_class = "RESOURCE_BUSY"
             structured_logger.log_event(
                 operation=operation,
                 application=target_name,
@@ -1134,7 +1207,7 @@ class CentralizedExecutionEngine:
                 "stderr": safety_res.message,
                 "ok": False,
                 "status": "BLOCKED",
-                "classification": safety_res.blocked_reason.value if safety_res.blocked_reason else "SAFETY_POLICY_REJECTED",
+                "classification": blocked_class,
                 "message": safety_res.message,
             }
             return
@@ -1142,9 +1215,32 @@ class CentralizedExecutionEngine:
         yield {"type": "progress", "percent": 20, "state": "SAFETY_CHECKED", "detail": "Live safety gate passed"}
 
         # 6. Resource lock
-        owner_id = f"stream_{target_name}_{int(time.time()*1000)}"
+        owner_id = owner_id or f"stream_{target_name}_{int(time.time()*1000)}"
         resources = [f"pm:{pm.lower()}", f"tool:{target_name.lower()}"]
-        resource_lock_mgr.acquire_resources(owner_id, resources, timeout=3.0)
+        lock_acquired = resource_lock_mgr.acquire_resources(owner_id, resources, timeout=3.0)
+        if not lock_acquired:
+            msg = f"Resource lock conflict: tool '{target_name}' or package manager '{pm}' is currently busy with another operation."
+            structured_logger.log_event(
+                operation=operation,
+                application=target_name,
+                identity=target_name,
+                status="BLOCKED",
+                message=msg,
+                command=clean_cmd,
+                source=source,
+            )
+            yield {"type": "log", "text": f"[Resource Busy]: {msg}", "stream": "stderr"}
+            yield {
+                "type": "done",
+                "returncode": -1,
+                "stdout": "",
+                "stderr": msg,
+                "ok": False,
+                "status": "BLOCKED",
+                "classification": "RESOURCE_BUSY",
+                "message": msg,
+            }
+            return
 
         full_stdout = ""
         full_stderr = ""
@@ -1186,7 +1282,20 @@ class CentralizedExecutionEngine:
                 if not elev_res:
                     elev_res = {"ok": True, "status": "EXECUTED", "exit_code": 0, "message": "Elevated operation completed"}
 
-                if elev_res.get("status") == "USER_DECLINED_ELEVATION" or elev_res.get("returncode") == 1223 or elev_res.get("exit_code") == 1223:
+                is_cancelled = (
+                    elev_res.get("status") == "USER_DECLINED_ELEVATION"
+                    or elev_res.get("code") == "ELEVATION_CANCELLED"
+                    or elev_res.get("returncode") == 1223
+                    or elev_res.get("exit_code") == 1223
+                    or privilege_manager.is_cancelled_by_user(
+                        elev_res.get("returncode", elev_res.get("exit_code", 0)),
+                        elev_res.get("stderr", ""),
+                        elev_res.get("status", "")
+                    )
+                )
+                if is_cancelled:
+                    cancel_rc = elev_res.get("returncode") or elev_res.get("exit_code") or 1223
+                    cancel_msg = elev_res.get("message") or "Administrator permission was not granted."
                     structured_logger.log_event(
                         operation=operation,
                         application=target_name,
@@ -1194,19 +1303,19 @@ class CentralizedExecutionEngine:
                         status="USER_DECLINED_ELEVATION",
                         message="Administrator permission was declined by user. System state was not changed.",
                         command=clean_cmd,
-                        return_code=1223,
+                        return_code=cancel_rc,
                     )
                     yield {
                         "type": "done",
-                        "returncode": 1223,
+                        "returncode": cancel_rc,
                         "stdout": "",
-                        "stderr": "Administrator permission was not granted.",
+                        "stderr": cancel_msg,
                         "ok": False,
                         "status": "USER_DECLINED_ELEVATION",
                         "code": "ELEVATION_CANCELLED",
                         "classification": "USER_DECLINED_ELEVATION",
                         "requires_elevation": True,
-                        "message": "Administrator permission was not granted.",
+                        "message": cancel_msg,
                     }
                     return
 
@@ -1275,11 +1384,17 @@ class CentralizedExecutionEngine:
                                 break
 
                         if time.time() - start_time > timeout:
-                            proc.kill()
+                            try:
+                                proc.kill()
+                                proc.wait(timeout=2.0)
+                            except Exception:
+                                pass
+                            rc = 124
                             line_queue.put(("stderr", f"[Timeout]: Process terminated after {timeout} seconds."))
                             break
 
-                    rc = proc.returncode if proc.returncode is not None else -1
+                    if rc != 124:
+                        rc = proc.returncode if proc.returncode is not None else -1
                     full_stdout = "\n".join(stdout_lines)
                     full_stderr = "\n".join(stderr_lines)
 
@@ -1360,13 +1475,24 @@ class CentralizedExecutionEngine:
                 success = False
 
             explanation = classified.get("explanation", "") if isinstance(classified, dict) else ""
-            if final_status == "VERIFICATION_TIMEOUT":
+            if rc == 124:
+                final_classification = "EXECUTION_TIMEOUT"
+                final_status = "EXECUTION_FAILED"
+                msg = f"{operation} for {target_name} timed out after {timeout} seconds."
+            elif final_status == "VERIFICATION_TIMEOUT":
+                final_classification = "VERIFICATION_TIMEOUT"
                 msg = f"{operation} for {target_name} executed, but verification timed out."
+            elif final_status == "VERIFICATION_FAILED":
+                final_classification = "VERIFICATION_FAILED"
+                msg = f"{operation} for {target_name} executed, but verification failed."
             elif success:
+                final_classification = classified.get("classification", "SUCCESS") if isinstance(classified, dict) else "SUCCESS"
                 msg = f"{operation} for {target_name} confirmed and verified."
             elif rc != 0:
+                final_classification = classified.get("classification", "COMMAND_EXECUTION_FAILED") if isinstance(classified, dict) else "COMMAND_EXECUTION_FAILED"
                 msg = f"{operation} for {target_name} failed: {explanation or full_stderr}"
             else:
+                final_classification = "VERIFICATION_FAILED"
                 msg = f"{operation} for {target_name} executed, but verification failed."
 
             # 8. State Refresh (RESCAN)
@@ -1398,7 +1524,7 @@ class CentralizedExecutionEngine:
                 "status": final_status,
                 "execution_status": exec_status,
                 "verification_status": verif_status,
-                "classification": classified.get("classification", "SUCCESS") if isinstance(classified, dict) else "SUCCESS",
+                "classification": final_classification,
                 "is_publisher_managed": classified.get("is_publisher_managed", False) if isinstance(classified, dict) else False,
                 "official_url": classified.get("official_url", "") if isinstance(classified, dict) else "",
                 "publisher_update_command": classified.get("publisher_update_command", "") if isinstance(classified, dict) else "",
@@ -1414,7 +1540,8 @@ class CentralizedExecutionEngine:
             yield done_event
 
         finally:
-            resource_lock_mgr.release_resources(owner_id, resources)
+            if lock_acquired:
+                resource_lock_mgr.release_resources(owner_id, resources)
 
 
 # Global singleton execution engine

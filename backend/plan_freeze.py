@@ -82,28 +82,44 @@ class ResourceLockManager:
 
     def acquire_resources(self, owner_id: str, resources: List[str], timeout: float = 10.0) -> bool:
         """Attempt to acquire locks for all requested resources."""
+        norm_resources = [str(r).strip().lower() for r in resources if str(r).strip()]
+        if not norm_resources:
+            return True
         start = time.time()
-        while time.time() - start < timeout:
+        while True:
             with self._global_mutex:
-                # Check if all resources are free
-                can_acquire = all(r not in self._active_locks or self._active_locks[r] == owner_id for r in resources)
+                can_acquire = all(r not in self._active_locks or self._active_locks[r] == owner_id for r in norm_resources)
                 if can_acquire:
-                    for r in resources:
+                    for r in norm_resources:
                         self._active_locks[r] = owner_id
                     return True
+            if time.time() - start >= timeout:
+                break
             time.sleep(0.05)
         return False
 
     def release_resources(self, owner_id: str, resources: List[str]) -> None:
         """Release locks for all resources owned by owner_id."""
+        norm_resources = [str(r).strip().lower() for r in resources if str(r).strip()]
         with self._global_mutex:
-            for r in resources:
+            for r in norm_resources:
                 if self._active_locks.get(r) == owner_id:
                     del self._active_locks[r]
 
     def is_locked(self, resource: str) -> bool:
+        norm_r = str(resource).strip().lower()
         with self._global_mutex:
-            return resource in self._active_locks
+            return norm_r in self._active_locks
+
+    def get_lock_owner(self, resource: str) -> Optional[str]:
+        norm_r = str(resource).strip().lower()
+        with self._global_mutex:
+            return self._active_locks.get(norm_r)
+
+    def clear_all(self) -> None:
+        """Reset all active locks (used in test tear-down)."""
+        with self._global_mutex:
+            self._active_locks.clear()
 
 
 # Global singleton lock manager

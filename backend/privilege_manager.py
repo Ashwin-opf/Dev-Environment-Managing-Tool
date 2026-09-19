@@ -164,6 +164,10 @@ class BasePrivilegeAdapter(ABC):
         """
         pass
 
+    def is_cancelled_by_user(self, exit_code: int, stderr: str = "") -> bool:
+        """Return True if the elevation failure was due to user cancellation."""
+        return False
+
     def check_pre_elevation_safety(self, payload: Dict[str, Any]) -> Tuple[bool, str, Optional[str]]:
         """
         Enforces that administrative elevation cannot bypass the Live Safety Gate.
@@ -204,6 +208,9 @@ class WindowsPrivilegeAdapter(BasePrivilegeAdapter):
             return bool(ctypes.windll.shell32.IsUserAnAdmin())
         except Exception:
             return False
+
+    def is_cancelled_by_user(self, exit_code: int, stderr: str = "") -> bool:
+        return exit_code == 1223 or "cancelled" in (stderr or "").lower() or "declined" in (stderr or "").lower()
 
     @staticmethod
     def get_interactive_window_handle() -> int:
@@ -845,6 +852,14 @@ class LinuxPrivilegeAdapter(BasePrivilegeAdapter):
     def is_elevated(self) -> bool:
         return os.name == "posix" and hasattr(os, "geteuid") and os.geteuid() == 0
 
+    def is_cancelled_by_user(self, exit_code: int, stderr: str = "") -> bool:
+        err = (stderr or "").lower()
+        if exit_code in (126, 1) and any(phrase in err for phrase in ("not authorized", "dismissed", "cancelled", "canceled", "auth_failed", "authentication failed")):
+            return True
+        if exit_code == 126:  # standard pkexec cancellation / authorization dismissed
+            return True
+        return False
+
     def execute_elevated(
         self, payload: Dict[str, Any], timeout_sec: int = 60
     ) -> Generator[Dict[str, Any], None, Dict[str, Any]]:
@@ -908,26 +923,66 @@ class LinuxPrivilegeAdapter(BasePrivilegeAdapter):
                 except Exception:
                     pass
 
+            if self.is_cancelled_by_user(proc.returncode, proc.stderr):
+                msg = "Administrator approval declined by user."
+                yield {"type": "log", "text": f"[Elevation Cancelled]: {msg}", "stream": "stderr"}
+                yield {
+                    "type": "progress",
+                    "percent": 30,
+                    "state": ElevationState.USER_DECLINED_ELEVATION.value,
+                    "detail": msg,
+                }
+                final_res = {
+                    "type": "done",
+                    "returncode": proc.returncode,
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout or "",
+                    "stderr": msg,
+                    "ok": False,
+                    "status": ElevationState.USER_DECLINED_ELEVATION.value,
+                    "code": "ELEVATION_CANCELLED",
+                    "classification": ElevationState.USER_DECLINED_ELEVATION.value,
+                    "requires_elevation": True,
+                    "notice": msg,
+                    "message": msg,
+                }
+                yield final_res
+                return final_res
+
             is_ok = (proc.returncode == 0 and worker_result.get("status") == "EXECUTED")
             pct75, d75 = STATE_PROGRESS_MAP[ElevationState.ELEVATED_OPERATION_COMPLETED.value]
             yield {"type": "progress", "percent": pct75, "state": ElevationState.ELEVATED_OPERATION_COMPLETED.value, "detail": d75}
 
-            res = {
+            status_val = "EXECUTED" if is_ok else ElevationState.ELEVATED_OPERATION_FAILED.value
+            msg = worker_result.get("message") or ("Elevated operation completed" if is_ok else proc.stderr or "Elevated operation failed")
+            final_res = {
+                "type": "done",
                 "ok": is_ok,
-                "status": "EXECUTED" if is_ok else ElevationState.ELEVATED_OPERATION_FAILED.value,
+                "status": status_val,
                 "exit_code": proc.returncode,
-                "message": worker_result.get("message") or ("Elevated operation completed" if is_ok else proc.stderr),
+                "returncode": proc.returncode,
+                "message": msg,
+                "stdout": proc.stdout or "",
+                "stderr": proc.stderr or ("" if is_ok else msg),
                 "worker_result": worker_result,
             }
-            return res
+            yield final_res
+            return final_res
         except subprocess.TimeoutExpired:
-            return {
+            msg = f"Elevated operation timed out after {timeout_sec}s"
+            yield {"type": "log", "text": f"[Timeout Error]: {msg}", "stream": "stderr"}
+            final_res = {
+                "type": "done",
                 "ok": False,
                 "status": ElevationState.ELEVATION_FAILED.value,
                 "code": "OPERATION_TIMEOUT",
-                "message": f"Elevated operation timed out after {timeout_sec}s",
+                "message": msg,
                 "exit_code": 124,
+                "returncode": 124,
+                "stderr": msg,
             }
+            yield final_res
+            return final_res
         finally:
             for p in (payload_path, result_path, heartbeat_path):
                 try:
@@ -942,6 +997,12 @@ class MacOSPrivilegeAdapter(BasePrivilegeAdapter):
 
     def is_elevated(self) -> bool:
         return os.name == "posix" and hasattr(os, "geteuid") and os.geteuid() == 0
+
+    def is_cancelled_by_user(self, exit_code: int, stderr: str = "") -> bool:
+        err = (stderr or "").lower()
+        if "-128" in err or "user canceled" in err or "user cancelled" in err:
+            return True
+        return False
 
     def execute_elevated(
         self, payload: Dict[str, Any], timeout_sec: int = 60
@@ -1000,26 +1061,66 @@ class MacOSPrivilegeAdapter(BasePrivilegeAdapter):
                 except Exception:
                     pass
 
+            if self.is_cancelled_by_user(proc.returncode, proc.stderr):
+                msg = "Administrator approval declined by user."
+                yield {"type": "log", "text": f"[Elevation Cancelled]: {msg}", "stream": "stderr"}
+                yield {
+                    "type": "progress",
+                    "percent": 30,
+                    "state": ElevationState.USER_DECLINED_ELEVATION.value,
+                    "detail": msg,
+                }
+                final_res = {
+                    "type": "done",
+                    "returncode": proc.returncode,
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout or "",
+                    "stderr": msg,
+                    "ok": False,
+                    "status": ElevationState.USER_DECLINED_ELEVATION.value,
+                    "code": "ELEVATION_CANCELLED",
+                    "classification": ElevationState.USER_DECLINED_ELEVATION.value,
+                    "requires_elevation": True,
+                    "notice": msg,
+                    "message": msg,
+                }
+                yield final_res
+                return final_res
+
             is_ok = (proc.returncode == 0 and worker_result.get("status") == "EXECUTED")
             pct75, d75 = STATE_PROGRESS_MAP[ElevationState.ELEVATED_OPERATION_COMPLETED.value]
             yield {"type": "progress", "percent": pct75, "state": ElevationState.ELEVATED_OPERATION_COMPLETED.value, "detail": d75}
 
-            res = {
+            status_val = "EXECUTED" if is_ok else ElevationState.ELEVATED_OPERATION_FAILED.value
+            msg = worker_result.get("message") or ("Elevated operation completed" if is_ok else proc.stderr or "Elevated operation failed")
+            final_res = {
+                "type": "done",
                 "ok": is_ok,
-                "status": "EXECUTED" if is_ok else ElevationState.ELEVATED_OPERATION_FAILED.value,
+                "status": status_val,
                 "exit_code": proc.returncode,
-                "message": worker_result.get("message") or ("Elevated operation completed" if is_ok else proc.stderr),
+                "returncode": proc.returncode,
+                "message": msg,
+                "stdout": proc.stdout or "",
+                "stderr": proc.stderr or ("" if is_ok else msg),
                 "worker_result": worker_result,
             }
-            return res
+            yield final_res
+            return final_res
         except subprocess.TimeoutExpired:
-            return {
+            msg = f"Elevated operation timed out after {timeout_sec}s"
+            yield {"type": "log", "text": f"[Timeout Error]: {msg}", "stream": "stderr"}
+            final_res = {
+                "type": "done",
                 "ok": False,
                 "status": ElevationState.ELEVATION_FAILED.value,
                 "code": "OPERATION_TIMEOUT",
-                "message": f"Elevated operation timed out after {timeout_sec}s",
+                "message": msg,
                 "exit_code": 124,
+                "returncode": 124,
+                "stderr": msg,
             }
+            yield final_res
+            return final_res
         finally:
             for p in (payload_path, result_path, heartbeat_path):
                 try:
@@ -1049,6 +1150,13 @@ class PrivilegeManager:
             if "linux" not in cls._adapters:
                 cls._adapters["linux"] = LinuxPrivilegeAdapter()
             return cls._adapters["linux"]
+
+    @classmethod
+    def is_cancelled_by_user(cls, exit_code: int, stderr: str = "", status: str = "") -> bool:
+        if status == ElevationState.USER_DECLINED_ELEVATION.value:
+            return True
+        return cls.get_adapter().is_cancelled_by_user(exit_code, stderr)
+
     @classmethod
     def resolve_privilege(cls, tier: Any = None, elevate: bool = False, scope: Optional[str] = None) -> BasePrivilegeAdapter:
         """Authoritative privilege resolution step for the execution pipeline."""
@@ -1091,8 +1199,10 @@ class PrivilegeManager:
             "source": "STATIC_DB",
         }
         res = cls.run_elevated_operation(payload)
-        if res.get("status") == "USER_DECLINED_ELEVATION":
-            return "", "Administrator permission was not granted by user.", 1223
+        adapter = cls.get_adapter()
+        if res.get("status") == ElevationState.USER_DECLINED_ELEVATION.value or res.get("code") == "ELEVATION_CANCELLED":
+            exit_code = res.get("exit_code") or res.get("returncode") or (1223 if isinstance(adapter, WindowsPrivilegeAdapter) else 126)
+            return "", "Administrator permission was not granted by user.", exit_code
         if not res.get("ok"):
             out = res.get("stdout") or ""
             err = res.get("stderr") or res.get("message") or ""

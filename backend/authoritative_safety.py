@@ -92,6 +92,13 @@ HARD_BLACKLIST = [
     r"\biptables\s+-F\b",                                      # flushing firewall rules without context
     r"(?:rmdir|rd)\s+.*?(?:/s|/q).*?(?:[A-Za-z]:\\|windows|system32)", # Windows root/system tree wiping
     r"del\s+.*?(?:/f|/s|/q).*?(?:windows\\system32|windows\\system|c:\\windows)", # Windows system wiping
+    # Stage 9 additions: dangerous shell composition, chained destructive injection, download-and-execute
+    r"(?:curl|wget|fetch|invoke-webrequest|iwr)\b.*?(?:\|\s*(?:sh|bash|zsh|dash|powershell|pwsh|cmd))\b", # untrusted remote execution pipe
+    r"(?:\$\(|\`)\s*(?:curl|wget|iwr|rm\s+-rf|del\s+|format\s+)", # destructive command substitution
+    r"(?:;|&&|\|\|)\s*(?:rm\s+-rf\s+['\"]?/\b|format\s+[A-Za-z]:|del\s+.*?(?:system32|windows)|drop\s+database\b)", # chained destructive commands
+    r"\biex\b\s*\(?\s*(?:new-object\s+net\.webclient|iwr|curl|wget)", # PowerShell download string execution
+    r"powershell.*?(?:iex|\-c|\-command).*?(?:downloadstring|webclient)", # PowerShell downloadstring execution
+    r"\bchmod\s+.*?(?:777|666)\s+/",                           # dangerous root permissions opening
 ]
 
 # Host protected patterns (OS kernel, firmware, low-level modules)
@@ -534,7 +541,7 @@ class AuthoritativeSafetyLayer:
                         allowed=False,
                         blocked_reason=BlockedReason.RESOURCE_LOCKED,
                         is_recoverable=True,
-                        message=f"Resource '{r}' is currently locked by concurrent operation '{owner}'.",
+                        message=f"Resource '{r}' is currently busy and locked by concurrent operation '{owner}'.",
                         details={"locked_resource": r, "owner": owner},
                     )
                     return res

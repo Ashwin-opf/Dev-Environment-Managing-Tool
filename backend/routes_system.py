@@ -920,8 +920,10 @@ async def execute_command_stream(req: ExecuteRequest):
         full_stdout = ""
         full_stderr = ""
         rc = 0
+        last_done_event = None
         for event in engine.stream_run(req.command, trigger_shce=True, timeout=1800, elevate=req.elevate, scope=req.scope, title=req.title):
             if event["type"] == "done":
+                last_done_event = event
                 full_stdout = event.get("stdout", "")
                 full_stderr = event.get("stderr", "")
                 rc = event.get("returncode", 0)
@@ -996,10 +998,22 @@ async def execute_command_stream(req: ExecuteRequest):
                             print("[DevEnvironmentDetector] Post repair verify stream error:", e)
             yield f"data: {json.dumps(event)}\n\n"
 
-        if rc == 0:
+        is_authoritative_success = (
+            rc == 0
+            and last_done_event is not None
+            and last_done_event.get("ok") is True
+            and last_done_event.get("status") in ("VERIFIED", "SUCCESS", "EXECUTED")
+        )
+        if is_authoritative_success:
             log_action("EXECUTE", req.command, req.purpose, friendly_summary=req.title or "Command completed successfully")
             if any(token in cmd_lower for token in ("apt ", "dnf ", "pacman ", "zypper ", "winget ", "brew ")):
                 record_history("execute", req.title or req.purpose or "command", req.command, "success", req.title or "Completed")
+        else:
+            final_status = (last_done_event.get("status") if last_done_event else None) or ("EXECUTION_FAILED" if rc != 0 else "VERIFICATION_FAILED")
+            final_msg = (last_done_event.get("message") if last_done_event else None) or req.purpose or "Command unverified or failed"
+            log_action(final_status, req.command, final_msg, friendly_summary=f"{req.title or 'Command'}: {final_status}")
+            if any(token in cmd_lower for token in ("apt ", "dnf ", "pacman ", "zypper ", "winget ", "brew ")):
+                record_history("execute", req.title or req.purpose or "command", req.command, "failed", req.title or "Failed")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

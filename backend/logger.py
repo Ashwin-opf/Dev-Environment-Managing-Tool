@@ -101,24 +101,29 @@ def log_action(
             confidence=confidence,
         )
     except Exception:
-        # Fallback raw write
+        # Fallback raw write with secret redaction
+        try:
+            from structured_logger import redact_secrets
+        except Exception:
+            def redact_secrets(s): return s
+
         entry = {
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-            "action": action,
-            "command": command,
-            "detail": detail,
-            "friendly_summary": friendly_summary,
-            "operation": operation,
-            "application": application or "System",
-            "identity": identity,
-            "recipe_id": recipe_id,
-            "source": source,
-            "status": action,
-            "message": detail,
+            "action": str(action),
+            "command": redact_secrets(str(command)),
+            "detail": redact_secrets(str(detail)),
+            "friendly_summary": redact_secrets(str(friendly_summary)),
+            "operation": str(operation),
+            "application": redact_secrets(str(application or "System")),
+            "identity": str(identity),
+            "recipe_id": str(recipe_id),
+            "source": str(source),
+            "status": str(action),
+            "message": redact_secrets(str(detail)),
             "return_code": return_code,
-            "versions": versions or {},
-            "verification": verification or {},
-            "tier": tier,
+            "versions": redact_secrets(versions or {}),
+            "verification": redact_secrets(verification or {}),
+            "tier": str(tier),
             "trust": trust,
             "risk": risk,
             "confidence": confidence,

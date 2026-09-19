@@ -46,7 +46,7 @@ jobs:
           pytest tests/ -q 2>&1 | tee pytest_macos.log
 
       - name: Upload macOS Validation Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: stage8_1-macos-evidence

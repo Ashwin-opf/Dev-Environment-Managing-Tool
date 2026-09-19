@@ -43,23 +43,36 @@ def get_log_file() -> Path:
 
 LOG_FILE = get_log_file()
 
-# Regex patterns for sensitive data redaction
+# Regex patterns for sensitive data redaction (tokens, API keys, credentials)
 SECRET_PATTERNS = [
-    r"(?i)(bearer\s+)[a-zA-Z0-9_\-\.]{16,}",
-    r"(?i)(api[_\-]?key[\s:=]+)[a-zA-Z0-9_\-]{16,}",
-    r"(?i)(token[\s:=]+)[a-zA-Z0-9_\-]{16,}",
-    r"(?i)(password[\s:=]+)[^\s&|]+",
+    (re.compile(r"(?i)(bearer\s+)[a-zA-Z0-9_\-\.]{12,}"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(authorization\s*:\s*bearer\s+)[^\s&|]+"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(--?(?:api[_\-]?key|token|password|secret)\s*[:=\s]\s*)[^\s&|]+"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(api[_\-]?key\s*[:=]\s*)[a-zA-Z0-9_\-]{10,}"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(token\s*[:=]\s*)[a-zA-Z0-9_\-]{10,}"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(password\s*[:=]\s*)[^\s&|]+"), r"\1[REDACTED]"),
+    (re.compile(r"(?i)(secret\s*[:=]\s*)[^\s&|]+"), r"\1[REDACTED]"),
+    (re.compile(r"AIza[0-9A-Za-z-_]{20,}"), "[REDACTED_API_KEY]"),
+    (re.compile(r"sk-(?:proj-)?[a-zA-Z0-9_-]{10,}"), "[REDACTED_API_KEY]"),
+    (re.compile(r"ghp_[a-zA-Z0-9]{20,}"), "[REDACTED_TOKEN]"),
+    (re.compile(r"github_pat_[a-zA-Z0-9_]{20,}"), "[REDACTED_TOKEN]"),
 ]
-_SECRET_REGEXES = [re.compile(p) for p in SECRET_PATTERNS]
 
 
-def redact_secrets(text: str) -> str:
-    if not text:
-        return ""
-    clean = text
-    for r in _SECRET_REGEXES:
-        clean = r.sub(r"\1[REDACTED]", clean)
-    return clean
+def redact_secrets(val: Any) -> Any:
+    """Recursively redacts secrets, credentials, and API tokens from strings or collections."""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        clean = val
+        for pat, rep in SECRET_PATTERNS:
+            clean = pat.sub(rep, clean)
+        return clean
+    if isinstance(val, dict):
+        return {k: redact_secrets(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple)):
+        return [redact_secrets(item) for item in val]
+    return val
 
 
 class StructuredLogger:
@@ -85,6 +98,8 @@ class StructuredLogger:
         trust: float = 1.0,
         risk: float = 0.2,
         confidence: float = 1.0,
+        details: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """Logs structured action entry with all 16 required fields."""
         entry = {
@@ -98,12 +113,13 @@ class StructuredLogger:
             "message": redact_secrets(str(message)),
             "command": redact_secrets(str(command)),
             "return_code": return_code,
-            "versions": versions or {},
-            "verification": verification or {},
+            "versions": redact_secrets(versions) if versions else {},
+            "verification": redact_secrets(verification) if verification else {},
             "tier": str(tier),
             "trust": round(float(trust), 2),
             "risk": round(float(risk), 2),
             "confidence": round(float(confidence), 2),
+            "details": redact_secrets(details) if details else {},
         }
 
         # Backwards compatibility fields for frontend UI log viewer
