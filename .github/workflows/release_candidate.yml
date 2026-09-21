@@ -14,7 +14,7 @@ jobs:
           - os: ubuntu-24.04
             os_name: linux
             archive_name: pc-doctor-v1.0.0-rc.1-linux-x64.tar.gz
-          - os: macos-latest
+          - os: macos-15-intel
             os_name: macos
             archive_name: pc-doctor-v1.0.0-rc.1-darwin-x64.tar.gz
           - os: windows-latest
@@ -39,7 +39,8 @@ jobs:
         run: |
           python backend/populate_static_db.py
 
-      - name: System & Runner Diagnostics
+      - name: System & Runner Diagnostics (POSIX)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           echo "=== RUNNER OS & KERNEL ==="
@@ -49,18 +50,37 @@ jobs:
           echo "=== WORKSPACE PATH ==="
           pwd
 
-      - name: Run Full Pytest Regression Suite
+      - name: System & Runner Diagnostics (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== RUNNER OS ==="
+          [System.Environment]::OSVersion.VersionString
+          Write-Host "=== PYTHON VERSION ==="
+          python --version
+          Write-Host "=== WORKSPACE PATH ==="
+          Get-Location
+
+      - name: Run Full Pytest Regression Suite (POSIX)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -o pipefail
           pytest tests/ -q 2>&1 | tee "pytest_${{ matrix.os_name }}.log"
+
+      - name: Run Full Pytest Regression Suite (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pytest tests/ -q 2>&1 | Tee-Object -FilePath "pytest_${{ matrix.os_name }}.log"
 
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install Frontend Dependencies & Build Production Bundle
+      - name: Install Frontend Dependencies & Build Production Bundle (POSIX)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           cd frontend
@@ -69,7 +89,18 @@ jobs:
           cd ..
           test -d frontend/dist && echo "Frontend build verified at frontend/dist"
 
-      - name: Assemble Release Bundle Directory
+      - name: Install Frontend Dependencies & Build Production Bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-Location frontend
+          npm install
+          npm run build
+          Set-Location ..
+          if (Test-Path frontend/dist) { Write-Host "Frontend build verified at frontend/dist" }
+
+      - name: Assemble Release Bundle Directory (POSIX)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p release_bundle/pc-doctor
@@ -88,6 +119,27 @@ jobs:
           rm -f release_bundle/pc-doctor/backend/pc_doctor.log
           rm -f release_bundle/pc-doctor/backend/*.corrupt*
           rm -f release_bundle/pc-doctor/backend/.env*
+
+      - name: Assemble Release Bundle Directory (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "release_bundle\pc-doctor"
+          Copy-Item -Recurse -Force "backend" "release_bundle\pc-doctor\"
+          Copy-Item -Recurse -Force "frontend\dist" "release_bundle\pc-doctor\frontend-dist"
+          Copy-Item -Recurse -Force "scripts" "release_bundle\pc-doctor\"
+          Copy-Item -Force "package.json" "release_bundle\pc-doctor\"
+          if (Test-Path "README.md") { Copy-Item -Force "README.md" "release_bundle\pc-doctor\" }
+
+          # Clean development artifacts from bundle
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "release_bundle\pc-doctor\backend\.venv"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "release_bundle\pc-doctor\backend\__pycache__"
+          Get-ChildItem -Path "release_bundle\pc-doctor\backend" -Filter "__pycache__" -Recurse -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "release_bundle\pc-doctor\backend\.pytest_cache"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "release_bundle\pc-doctor\backend\.pc_doctor_ai_config"
+          Remove-Item -Force -ErrorAction SilentlyContinue "release_bundle\pc-doctor\backend\pc_doctor.log"
+          Get-ChildItem -Path "release_bundle\pc-doctor\backend" -Filter "*.corrupt*" | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path "release_bundle\pc-doctor\backend" -Filter ".env*" | Remove-Item -Force -ErrorAction SilentlyContinue
 
       - name: Package Release Archive (POSIX)
         if: runner.os != 'Windows'

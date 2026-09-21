@@ -262,17 +262,22 @@ class CanonicalIdentityStore:
                 installation_paths=[
                     r"C:\Program Files\Git\cmd\git.exe",
                     r"C:\Program Files\Git\bin\git.exe",
+                    r"C:\Program Files\Git\mingw64\bin\git.exe",
                     r"C:\Program Files (x86)\Git\cmd\git.exe",
                     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\cmd\git.exe"),
                     "/usr/bin/git",
                     "/usr/local/bin/git",
+                    "/opt/homebrew/bin/git",
                 ],
                 required_path_dirs=[
                     r"C:\Program Files\Git\cmd",
+                    r"C:\Program Files\Git\bin",
+                    r"C:\Program Files\Git\mingw64\bin",
                     r"C:\Program Files (x86)\Git\cmd",
                     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\cmd"),
                     "/usr/bin",
                     "/usr/local/bin",
+                    "/opt/homebrew/bin",
                 ],
                 version_command=["git", "--version"],
                 official_url="https://git-scm.com",
@@ -284,9 +289,37 @@ class CanonicalIdentityStore:
                 expected_executable_path=r"C:\Program Files\Git\cmd\git.exe" if cur_os == "Windows" else "/usr/bin/git",
                 functional_probe_command=["git", "help"],
                 platform_overrides={
-                    "darwin": {"package_id": "git", "package_manager": "brew"},
-                    "linux": {"package_id": "git", "package_manager": "apt"},
-                    "windows": {"package_id": "Git.Git", "package_manager": "winget"},
+                    "darwin": {
+                        "package_id": "git",
+                        "package_manager": "brew",
+                        "expected_executable_path": "/usr/bin/git",
+                        "installation_paths": ["/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"],
+                        "required_path_dirs": ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"],
+                    },
+                    "linux": {
+                        "package_id": "git",
+                        "package_manager": "apt",
+                        "expected_executable_path": "/usr/bin/git",
+                        "installation_paths": ["/usr/bin/git", "/usr/local/bin/git"],
+                        "required_path_dirs": ["/usr/bin", "/usr/local/bin"],
+                    },
+                    "windows": {
+                        "package_id": "Git.Git",
+                        "package_manager": "winget",
+                        "expected_executable_path": r"C:\Program Files\Git\cmd\git.exe",
+                        "installation_paths": [
+                            r"C:\Program Files\Git\cmd\git.exe",
+                            r"C:\Program Files\Git\bin\git.exe",
+                            r"C:\Program Files\Git\mingw64\bin\git.exe",
+                            r"C:\Program Files (x86)\Git\cmd\git.exe",
+                        ],
+                        "required_path_dirs": [
+                            r"C:\Program Files\Git\cmd",
+                            r"C:\Program Files\Git\bin",
+                            r"C:\Program Files\Git\mingw64\bin",
+                            r"C:\Program Files (x86)\Git\cmd",
+                        ],
+                    },
                 },
             )
         )

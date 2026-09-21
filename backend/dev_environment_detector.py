@@ -593,7 +593,11 @@ class DevEnvironmentDetector:
                 except Exception:
                     resolved_parent = Path(p).parent
                 if resolved_parent.name.lower() in ("bin", "cmd", "scripts"):
-                    distinct_roots.add(str(resolved_parent.parent).lower())
+                    parent_root = resolved_parent.parent
+                    if parent_root.name.lower() in ("mingw64", "mingw32", "usr"):
+                        distinct_roots.add(str(parent_root.parent).lower())
+                    else:
+                        distinct_roots.add(str(parent_root).lower())
                 else:
                     distinct_roots.add(str(resolved_parent).lower())
             if len(distinct_roots) > 1:
