@@ -33,12 +33,16 @@ from typing import Any, Dict, Optional
 
 
 def get_log_file() -> Path:
-    log_dir = os.getenv("LOG_PATH", "").strip()
-    if log_dir:
-        path = Path(log_dir) / "pc_doctor.log"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return path
-    return Path(__file__).parent / "pc_doctor.log"
+    try:
+        from runtime_paths import get_log_file as _get_path
+        return _get_path()
+    except Exception:
+        log_dir = os.getenv("LOG_PATH", "").strip()
+        if log_dir:
+            path = Path(log_dir) / "pc_doctor.log"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            return path
+        return Path(__file__).parent / "pc_doctor.log"
 
 
 LOG_FILE = get_log_file()

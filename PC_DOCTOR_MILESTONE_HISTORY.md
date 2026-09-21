@@ -16,6 +16,9 @@ This document records the exact progression of verified stages, test counts, and
 | **Stage 5.1** | **Tier-3 Authorization Invariant** | **359 / 359** | 20 Tier 3 safety-boundary/integration tests + live regression proof | PASSED |
 | **Stage 7** | **Shared Capability Expansion** | **456 / 456** | 7 shared capabilities, 42/75 actionable repair problems | PASSED |
 | **Stage 8** | **Cross-Platform Live Validation** | **475 passed, 2 skipped (477 total)** | Windows 11 live host validation baseline + Linux/macOS contract proof | PASSED |
+| **Stage 8.1** | **Native Cross-Platform Live Validation** | **470 passed, 9 skipped (479 total)** | Genuine native validation on Ubuntu 24.04 and macOS via hosted CI runners | PASSED |
+| **Stage 9** | **Reliability & Security Hardening** | **499 passed, 2 skipped (501 total)** | 22 security/hardening tests, prompt injection defense, 16-field logging, secret redaction | PASSED |
+| **Stage 10** | **Release Candidate** | **510 passed, 2 skipped (512 total)** | Version 1.0.0-rc.1 unified, runtime paths normalized, db lifecycle & corruption recovery, release CI workflow | PASSED |
 
 ---
 
@@ -66,3 +69,20 @@ This document records the exact progression of verified stages, test counts, and
 - **Test Result**: **475 passed, 2 skipped (477 total)** (456 prior baseline + 21 dedicated cross-platform validation and contract tests in `tests/test_cross_platform_validation.py`).
 - **Runtime Proof**: Live Windows 11 host execution evidence archived in `scratch/stage8_windows_evidence.json`.
 - **Documentation**: `STAGE8_CROSS_PLATFORM_AUDIT.md`, `STAGE8_CROSS_PLATFORM_CAPABILITY_MATRIX.md`, `STAGE8_CROSS_PLATFORM_RESULT.md`
+
+### Stage 8.1 — Native Cross-Platform Live Validation
+- **Focus**: Genuine native live host validation on Ubuntu 24.04 and macOS hosted CI environments. Live execution of platform-specific package managers (`apt`, `brew`), system service managers (`systemd`, `launchctl`), POSIX permissions (`chmod`, `chown`), and machine state inspection. Updated GitHub Actions workflows to current official Node-24 compatible action releases (`actions/checkout@v7`, `actions/setup-python@v7`, `actions/upload-artifact@v6`).
+- **Test Result**: **Linux: 470 passed, 9 skipped; macOS: 470 passed, 9 skipped; Windows: 477 passed, 2 skipped.**
+- **Runtime Proof**: Verified hosted CI workflow runs with downloadable native evidence artifacts.
+- **Documentation**: `STAGE8_1_NATIVE_VALIDATION_RESULT.md`
+
+### Stage 9 — Reliability, Security & Failure-Path Hardening
+- **Focus**: Comprehensive failure-path hardening and security audit. Hardening of Safety Gate against prompt injection attempts, execution engine failure-path resilience with bounded timeouts, mandatory verification invariant (exit code 0 alone never implies success), 16-field structured action logging with comprehensive credential/token redaction, and Tier 3 authorization enforcement.
+- **Test Result**: **499 passed, 2 skipped (501 total on Windows); 492 passed, 9 skipped on Linux and macOS.** Dedicated 22-test suite in `tests/test_stage9_reliability_security.py` completely green.
+- **Documentation**: `STAGE9_RELIABILITY_SECURITY_AUDIT.md`, `STAGE9_HARDENING_RESULT.md`
+
+### Stage 10 — Release Candidate
+- **Focus**: Transform the validated system into an installable, reproducible, resilient Release Candidate (`v1.0.0-rc.1`). Unified version metadata across 5 manifests (`package.json`, `frontend/package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `backend/version.py`, `backend/main.py`), normalized platform runtime directory resolution (`backend/runtime_paths.py`), database lifecycle management with automated integrity check, corruption quarantine, schema migration, and crash task recovery (`backend/db_init.py`), frontend production build verification, and multi-platform release candidate packaging workflow (`.github/workflows/release_candidate.yml`).
+- **Test Result**: **510 passed, 2 skipped (512 total on Windows).** Dedicated 11-test suite in `tests/test_stage10_release_candidate.py` completely green.
+- **Documentation**: `release_candidate_manifest.json`, `STAGE10_RELEASE_CANDIDATE_AUDIT.md`, `STAGE10_RELEASE_CANDIDATE_RESULT.md`
+

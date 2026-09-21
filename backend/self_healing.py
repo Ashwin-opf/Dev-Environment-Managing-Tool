@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import Optional, Any, Tuple, Dict, List
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "knowledge.db"))
+try:
+    from runtime_paths import get_runtime_db_path
+    DB_PATH = os.getenv("DB_PATH", str(get_runtime_db_path()))
+except Exception:
+    DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "knowledge.db"))
 
 # Configuration
 MAX_HEALING_ATTEMPTS = int(os.getenv("PC_DOCTOR_MAX_HEALING_ATTEMPTS", "3"))

@@ -81,6 +81,14 @@ fn find_python(backend_dir: &PathBuf) -> PathBuf {
 // `tauri dev` (exe is deep inside target/debug) or a packaged binary.
 
 fn find_backend_dir() -> Option<PathBuf> {
+    // 0. Explicit environment variable override
+    if let Ok(val) = std::env::var("PC_DOCTOR_BACKEND_DIR") {
+        let p = PathBuf::from(val);
+        if p.join("main.py").exists() {
+            return Some(p);
+        }
+    }
+
     // 1. Check current working directory
     if let Ok(cwd) = std::env::current_dir() {
         let candidate = cwd.join("backend");
@@ -92,7 +100,7 @@ fn find_backend_dir() -> Option<PathBuf> {
         }
     }
 
-    // 2. Check parents of executable location
+    // 2. Check parents of executable location & bundled resources
     if let Ok(exe_path) = std::env::current_exe() {
         let mut dir = exe_path.parent().map(|p| p.to_path_buf());
         for _ in 0..8 {
@@ -101,23 +109,14 @@ fn find_backend_dir() -> Option<PathBuf> {
                 if candidate.join("main.py").exists() {
                     return Some(candidate);
                 }
+                let res_candidate = d.join("resources").join("backend");
+                if res_candidate.join("main.py").exists() {
+                    return Some(res_candidate);
+                }
                 dir = d.parent().map(|p| p.to_path_buf());
             } else {
                 break;
             }
-        }
-    }
-
-    // 3. Fallback: check project root path
-    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
-        let fallback = PathBuf::from(home)
-            .join(".gemini")
-            .join("antigravity")
-            .join("scratch")
-            .join("pc-doc")
-            .join("backend");
-        if fallback.join("main.py").exists() {
-            return Some(fallback);
         }
     }
 

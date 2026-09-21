@@ -54,11 +54,12 @@ if (isWin) {
             { stdio: 'pipe', encoding: 'utf8' }
         ).match(/Path\s+REG(?:_EXPAND)?_SZ\s+(.*)/i)?.[1]?.trim() ?? '';
 
-        const rustSelfContained = path.join(
-            process.env.USERPROFILE || 'C:\\Users\\srira',
+        const userProfile = process.env.USERPROFILE || process.env.HOME || '';
+        const rustSelfContained = userProfile ? path.join(
+            userProfile,
             '.rustup', 'toolchains', 'stable-x86_64-pc-windows-gnu',
             'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin', 'self-contained'
-        );
+        ) : '';
 
         process.env.PATH = [rustSelfContained, machinePath, userPath, process.env.PATH].filter(Boolean).join(';');
     } catch (_) {}

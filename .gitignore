@@ -53,3 +53,14 @@ Thumbs.db
 Desktop.ini
 *.swp
 *~
+
+# Secrets & Environment variables
+.env
+.env.*
+.env.local
+.pc_doctor_ai_config/
+
+# Database corruption backups
+*.corrupt.*
+*.corrupt
+

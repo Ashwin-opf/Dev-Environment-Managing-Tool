@@ -1,0 +1,126 @@
+name: Release Candidate — PC Doctor v1.0.0-rc.1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-validate:
+    name: RC Validation & Packaging (${{ matrix.os_name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            os_name: linux
+            archive_name: pc-doctor-v1.0.0-rc.1-linux-x64.tar.gz
+          - os: macos-latest
+            os_name: macos
+            archive_name: pc-doctor-v1.0.0-rc.1-darwin-x64.tar.gz
+          - os: windows-latest
+            os_name: windows
+            archive_name: pc-doctor-v1.0.0-rc.1-windows-x64.zip
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pytest httpx
+
+      - name: Initialize Static Knowledge Base
+        run: |
+          python backend/populate_static_db.py
+
+      - name: System & Runner Diagnostics
+        shell: bash
+        run: |
+          echo "=== RUNNER OS & KERNEL ==="
+          uname -a || true
+          echo "=== PYTHON VERSION ==="
+          python --version
+          echo "=== WORKSPACE PATH ==="
+          pwd
+
+      - name: Run Full Pytest Regression Suite
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest tests/ -q 2>&1 | tee "pytest_${{ matrix.os_name }}.log"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Frontend Dependencies & Build Production Bundle
+        shell: bash
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          cd ..
+          test -d frontend/dist && echo "Frontend build verified at frontend/dist"
+
+      - name: Assemble Release Bundle Directory
+        shell: bash
+        run: |
+          mkdir -p release_bundle/pc-doctor
+          cp -r backend release_bundle/pc-doctor/
+          cp -r frontend/dist release_bundle/pc-doctor/frontend-dist
+          cp -r scripts release_bundle/pc-doctor/
+          cp package.json release_bundle/pc-doctor/
+          cp README.md release_bundle/pc-doctor/ 2>/dev/null || true
+          
+          # Clean development artifacts from bundle
+          rm -rf release_bundle/pc-doctor/backend/.venv
+          rm -rf release_bundle/pc-doctor/backend/__pycache__
+          rm -rf release_bundle/pc-doctor/backend/*/__pycache__
+          rm -rf release_bundle/pc-doctor/backend/.pytest_cache
+          rm -rf release_bundle/pc-doctor/backend/.pc_doctor_ai_config
+          rm -f release_bundle/pc-doctor/backend/pc_doctor.log
+          rm -f release_bundle/pc-doctor/backend/*.corrupt*
+          rm -f release_bundle/pc-doctor/backend/.env*
+
+      - name: Package Release Archive (POSIX)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          tar -czf "${{ matrix.archive_name }}" -C release_bundle pc-doctor
+          shasum -a 256 "${{ matrix.archive_name }}" > "SHA256SUMS-${{ matrix.os_name }}.txt"
+          cat "SHA256SUMS-${{ matrix.os_name }}.txt"
+
+      - name: Package Release Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "release_bundle\pc-doctor" -DestinationPath "${{ matrix.archive_name }}" -Force
+          $hash = (Get-FileHash -Path "${{ matrix.archive_name }}" -Algorithm SHA256).Hash
+          "$hash  ${{ matrix.archive_name }}" | Out-File -Encoding utf8 -FilePath "SHA256SUMS-${{ matrix.os_name }}.txt"
+          Get-Content "SHA256SUMS-${{ matrix.os_name }}.txt"
+
+      - name: Upload Release Candidate Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-candidate-${{ matrix.os_name }}
+          path: |
+            ${{ matrix.archive_name }}
+            SHA256SUMS-${{ matrix.os_name }}.txt
+            pytest_${{ matrix.os_name }}.log
+          retention-days: 14
+
+      - name: Verification Summary
+        shell: bash
+        run: |
+          echo "=========================================================="
+          echo "Release Candidate Packaging Complete for ${{ matrix.os_name }}"
+          echo "Archive: ${{ matrix.archive_name }}"
+          cat "SHA256SUMS-${{ matrix.os_name }}.txt"
+          echo "=========================================================="

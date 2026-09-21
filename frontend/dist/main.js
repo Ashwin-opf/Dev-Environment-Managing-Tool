@@ -1143,6 +1143,7 @@ function switchView(name, forceImmediate = false) {
     optimize: "Optimize System", devtools: "Dev Tools",
     drivers: "Driver Manager", "terminal-ai": "AI Terminal Agent",
     logs: "Action Logs", "os-adaptation": "Control Center",
+    myapps: "My Apps",
   };
   $("view-title").textContent = titles[name] || "PC Doctor";
 
@@ -1157,6 +1158,7 @@ function switchView(name, forceImmediate = false) {
   if (name === "devtools")    loadDevToolCards(false);
   if (name === "os-adaptation") loadOsAdaptationTab(false);
   if (name === "logs")        loadLogs();
+  if (name === "myapps")      loadMyApps();
   if (name === "drivers") {
     loadDrivers();
     startGpuUsageRefresh();
@@ -2980,7 +2982,7 @@ async function runLivePkgSearch(query) {
   _lastResolveVariant = "";
 
   try {
-    const res  = await fetch("/api/devtools/resolve", {
+    const res  = await fetch(`${API}/api/devtools/resolve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, variant: "", force_refresh: false }),
@@ -2988,7 +2990,7 @@ async function runLivePkgSearch(query) {
     const data = await res.json();
     if (spinner) spinner.style.display = "none";
 
-    if (!data.ok || data.status === "not_found" || !data.candidates?.length) {
+    if (!data.ok || data.status === "not_found" || (!data.selected && (!data.candidates || data.candidates.length === 0))) {
       if (emptyEl) emptyEl.style.display = "block";
       return;
     }
@@ -3201,7 +3203,7 @@ async function openPkgDetails(pkgId, manager) {
   requestAnimationFrame(() => { drawer.style.right = "0"; });
 
   try {
-    const res = await fetch("/api/devtools/package-details", {
+    const res = await fetch(`${API}/api/devtools/package-details`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: pkgId, manager }),
@@ -3303,7 +3305,7 @@ async function installDiscoveredPkg(pkgId, manager, displayName,
   // Ask backend for the verified command (don't build it client-side)
   let installCmd = "";
   try {
-    const det = await fetch("/api/devtools/package-details", {
+    const det = await fetch(`${API}/api/devtools/package-details`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: pkgId, manager }),
@@ -3334,7 +3336,7 @@ async function installDiscoveredPkg(pkgId, manager, displayName,
   // Fetch version probe command
   let versionCmd = "";
   try {
-    const vc = await fetch(`/api/devtools/version-cmd?name=${encodeURIComponent(displayName)}`);
+    const vc = await fetch(`${API}/api/devtools/version-cmd?name=${encodeURIComponent(displayName)}`);
     const vcData = await vc.json();
     if (vcData.ok && vcData.cmd) versionCmd = vcData.cmd;
   } catch (_) {}
@@ -3371,7 +3373,7 @@ async function _runInstallWithPostConfirm(opts) {
   const success = exitCode === 0;
 
   // Persist to provenance cache (fire-and-forget)
-  fetch("/api/devtools/resolve/record-install", {
+  fetch(`${API}/api/devtools/resolve/record-install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -3428,7 +3430,7 @@ async function _streamCommandAndAwait(opts) {
 
     // Record in provenance
     if (context.pkg_id && context.manager && context.query) {
-      fetch("/api/devtools/resolve/record-install", {
+      fetch(`${API}/api/devtools/resolve/record-install`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -7299,3 +7301,485 @@ window.addEventListener("mousemove", (e) => {
     card.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg) translateZ(20px)`;
   });
 });
+
+/* ═══════════════════════════════════════════════════════════════
+   MY APPS — Real-time update manager (Play Store-style progress)
+   ═══════════════════════════════════════════════════════════════ */
+
+// Track active EventSource connections (app_id → EventSource)
+const _myAppsEventSources = {};
+let _allManagedApps = [];
+
+/**
+ * Load all managed apps from the backend and render them into the grid.
+ */
+async function loadMyApps() {
+  const grid    = document.getElementById('myapps-grid');
+  const loading = document.getElementById('myapps-loading');
+  const empty   = document.getElementById('myapps-empty');
+  const badge   = document.getElementById('myapps-count-badge');
+  const statTotal = document.getElementById('myapps-stat-total');
+  const statStatus = document.getElementById('myapps-stat-up-to-date');
+  const statManager = document.getElementById('myapps-stat-manager');
+
+  if (!grid) return;
+
+  // Show spinner
+  if (loading) loading.style.display = 'block';
+  if (empty)   empty.classList.add('hidden');
+  grid.innerHTML = '';
+
+  try {
+    const r = await fetch(`${API}/api/devtools/managed`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    const apps = data.apps || [];
+    _allManagedApps = apps;
+
+    if (loading) loading.style.display = 'none';
+
+    // Update stat summary tiles
+    if (statTotal) statTotal.textContent = apps.length;
+    if (statStatus) statStatus.textContent = apps.length > 0 ? 'All Ready' : 'None Tracked';
+    if (statManager) {
+      const managers = [...new Set(apps.map(a => a.package_manager).filter(Boolean))];
+      statManager.textContent = managers.length ? managers.join(', ') : 'Auto';
+    }
+
+    // Update sidebar badge
+    if (badge) {
+      badge.textContent = apps.length;
+      badge.style.display = apps.length > 0 ? 'inline-flex' : 'none';
+    }
+
+    if (!apps.length) {
+      if (empty) empty.classList.remove('hidden');
+      return;
+    }
+
+    grid.innerHTML = apps.map(app => _renderMyAppCard(app)).join('');
+  } catch (err) {
+    if (loading) loading.style.display = 'none';
+    grid.innerHTML = `<div class="store-error-state">
+      <div class="empty-icon">⚠️</div>
+      <h3 class="empty-title">Could not load applications</h3>
+      <p class="empty-desc">${escHtml(err.message)}</p>
+    </div>`;
+  }
+}
+window.loadMyApps = loadMyApps;
+
+/**
+ * Real-time filter for installed applications in My Apps view.
+ */
+function filterMyApps() {
+  const input = document.getElementById('myapps-search-input');
+  if (!input) return;
+  const q = (input.value || '').trim().toLowerCase();
+  const grid = document.getElementById('myapps-grid');
+  if (!grid) return;
+
+  const cards = grid.querySelectorAll('.store-tool-card.myapp-card');
+  let visibleCount = 0;
+
+  cards.forEach(card => {
+    const name = (card.dataset.appName || '').toLowerCase();
+    const cat  = (card.dataset.appCategory || '').toLowerCase();
+    const mgr  = (card.dataset.appManager || '').toLowerCase();
+    const desc = (card.dataset.appDesc || '').toLowerCase();
+
+    const matches = !q || name.includes(q) || cat.includes(q) || mgr.includes(q) || desc.includes(q);
+    card.style.display = matches ? 'flex' : 'none';
+    if (matches) visibleCount++;
+  });
+
+  const empty = document.getElementById('myapps-empty');
+  if (empty && _allManagedApps.length > 0) {
+    if (visibleCount === 0) {
+      empty.classList.remove('hidden');
+      empty.querySelector('.empty-title').textContent = 'No matching applications';
+      empty.querySelector('.empty-desc').textContent = `No installed apps match your query "${input.value}".`;
+    } else {
+      empty.classList.add('hidden');
+    }
+  }
+}
+window.filterMyApps = filterMyApps;
+
+/**
+ * Build the HTML for a single managed app card adhering strictly to .store-tool-card structure.
+ */
+function _renderMyAppCard(app) {
+  const id          = app.app_id || '';
+  const name        = app.name || id;
+  const category    = app.category || 'Developer Tool';
+  const desc        = app.description || 'Installed application tracked by PC Doctor.';
+  const manager     = app.package_manager || 'system';
+  const installedAt = app.installed_at ? new Date(app.installed_at).toLocaleDateString() : 'Active';
+  const hasUpdate   = !!app.update_command;
+  const initial     = (name[0] || '?').toUpperCase();
+  const safeId      = JSON.stringify(id);
+  const safeName    = JSON.stringify(name);
+  const safeUpdate  = JSON.stringify(app.update_command || '');
+
+  return `
+  <div class="store-tool-card myapp-card" id="myapp-card-${escHtml(id)}"
+       data-app-id="${escHtml(id)}"
+       data-app-name="${escHtml(name)}"
+       data-app-category="${escHtml(category)}"
+       data-app-manager="${escHtml(manager)}"
+       data-app-desc="${escHtml(desc)}">
+
+    <!-- Progress overlay (hidden until update starts) -->
+    <div class="myapp-progress-overlay" id="myapp-overlay-${escHtml(id)}">
+      <div class="myapp-check-icon" id="myapp-check-${escHtml(id)}">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--apple-green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      </div>
+      <div class="myapp-error-icon" id="myapp-err-${escHtml(id)}">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#ff375f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div class="myapp-progress-track">
+        <div class="myapp-progress-fill shimmer-active" id="myapp-fill-${escHtml(id)}" style="width:0%"></div>
+      </div>
+      <div class="myapp-progress-labels">
+        <span class="myapp-progress-phase" id="myapp-phase-${escHtml(id)}">Preparing update…</span>
+        <span class="myapp-progress-pct"  id="myapp-pct-${escHtml(id)}">0%</span>
+      </div>
+      <button class="secondary-btn myapp-cancel-update" id="myapp-cancel-${escHtml(id)}"
+              onclick='cancelAppUpdate(${safeId})'>Cancel</button>
+    </div>
+
+    <!-- Top Block -->
+    <div>
+      <div class="tool-card-top">
+        <div class="tool-card-icon" style="background: linear-gradient(135deg, rgba(10, 132, 255, 0.2), rgba(90, 200, 250, 0.25)); color: var(--apple-cyan); font-weight: 800; font-size: 1.4rem;">
+          ${escHtml(initial)}
+        </div>
+        <div class="tool-card-header-text">
+          <h3 class="tool-card-name" title="${escHtml(name)}">${escHtml(name)}</h3>
+          <span class="tool-card-category-pill">${escHtml(category)}</span>
+        </div>
+      </div>
+      <p class="tool-card-desc">${escHtml(desc)}</p>
+    </div>
+
+    <!-- Bottom Block -->
+    <div>
+      <div class="tool-card-meta-row">
+        <div class="tool-card-badges">
+          <span class="store-badge installed" id="myapp-badge-${escHtml(id)}">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Installed
+          </span>
+          <span class="store-badge offline" style="text-transform: uppercase;">
+            ${escHtml(manager)}
+          </span>
+        </div>
+        <span style="color: var(--text-3); font-size: 0.7rem; font-weight: 500;">${escHtml(installedAt)}</span>
+      </div>
+
+      <div class="tool-card-footer">
+        <button class="tool-action-btn" id="myapp-uninbtn-${escHtml(id)}"
+                onclick='confirmUninstall(${safeId}, ${safeName})'
+                style="background: rgba(255, 55, 95, 0.1); border-color: rgba(255, 55, 95, 0.3); color: #ff375f; display: flex; align-items: center; gap: 0.3rem;"
+                title="Uninstall this package safely">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          Uninstall
+        </button>
+        <button class="tool-action-btn btn-update" id="myapp-updbtn-${escHtml(id)}"
+                ${!hasUpdate ? 'disabled title="No automatic update command registered"' : ''}
+                onclick='updateApp(${safeId}, ${safeName}, ${safeUpdate})'
+                style="display: flex; align-items: center; gap: 0.35rem;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Update
+        </button>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+/**
+ * Start an SSE stream to update a single app.
+ * Animates the Play Store-style progress bar in real time.
+ */
+function updateApp(appId, appName, updateCommand) {
+  if (!updateCommand) {
+    showToast(`No update command registered for ${appName}`, 'err');
+    return;
+  }
+
+  // Close any existing stream for this app
+  cancelAppUpdate(appId);
+
+  const overlay   = document.getElementById(`myapp-overlay-${appId}`);
+  const fill      = document.getElementById(`myapp-fill-${appId}`);
+  const phaseEl   = document.getElementById(`myapp-phase-${appId}`);
+  const pctEl     = document.getElementById(`myapp-pct-${appId}`);
+  const checkEl   = document.getElementById(`myapp-check-${appId}`);
+  const errEl     = document.getElementById(`myapp-err-${appId}`);
+  const badge     = document.getElementById(`myapp-badge-${appId}`);
+  const updateBtn = document.getElementById(`myapp-updbtn-${appId}`);
+  const uninstBtn = document.getElementById(`myapp-uninbtn-${appId}`);
+
+  if (!overlay || !fill) {
+    showToast(`Update UI not found for ${appName}`, 'err');
+    return;
+  }
+
+  // Show overlay
+  overlay.classList.add('active');
+  if (checkEl) { checkEl.classList.remove('visible'); checkEl.style.display = 'none'; }
+  if (errEl)   { errEl.classList.remove('visible');   errEl.style.display = 'none';   }
+  fill.className = 'myapp-progress-fill shimmer-active';
+  fill.style.width = '0%';
+  if (phaseEl) phaseEl.textContent = 'Fetching update…';
+  if (pctEl)   pctEl.textContent   = '0%';
+  if (badge) {
+    badge.className = 'store-badge trending';
+    badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg> Updating`;
+  }
+  if (updateBtn) updateBtn.disabled = true;
+  if (uninstBtn) uninstBtn.disabled = true;
+
+  // Open SSE stream
+  const url = `${API}/api/devtools/update-stream?app_id=${encodeURIComponent(appId)}`;
+  const es = new EventSource(url);
+  _myAppsEventSources[appId] = es;
+
+  es.onmessage = (evt) => {
+    try {
+      const d = JSON.parse(evt.data);
+      const pct = Math.min(100, Math.max(0, d.pct || 0));
+
+      // Animate bar
+      fill.style.width = `${pct}%`;
+      if (pctEl) pctEl.textContent = `${pct}%`;
+      if (phaseEl) phaseEl.textContent = d.message || d.phase || '';
+
+      // Phase-specific styling
+      if (d.phase === 'fetching') {
+        fill.className = 'myapp-progress-fill shimmer-active';
+      } else if (d.phase === 'installing' || d.phase === 'verifying') {
+        fill.className = 'myapp-progress-fill'; // solid fill, no shimmer
+      } else if (d.phase === 'done') {
+        fill.className = 'myapp-progress-fill done';
+        fill.style.width = '100%';
+        if (pctEl) pctEl.textContent = '100%';
+        if (phaseEl) phaseEl.textContent = 'Update complete!';
+
+        // Show checkmark
+        if (checkEl) { checkEl.style.display = 'block'; checkEl.classList.add('visible'); }
+
+        // Update badge
+        if (badge) {
+          badge.className = 'store-badge installed';
+          badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Updated`;
+        }
+
+        // Dismiss overlay after 2.2s
+        setTimeout(() => {
+          overlay.classList.remove('active');
+          if (updateBtn) updateBtn.disabled = false;
+          if (uninstBtn) uninstBtn.disabled = false;
+          if (badge) {
+            badge.className = 'store-badge installed';
+            badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Installed`;
+          }
+        }, 2200);
+
+        es.close();
+        delete _myAppsEventSources[appId];
+        showToast(`✓ ${appName} updated successfully!`, 'ok');
+
+      } else if (d.phase === 'error') {
+        fill.className = 'myapp-progress-fill error';
+        if (phaseEl) phaseEl.textContent = d.message || 'Update failed';
+        if (errEl)   { errEl.style.display = 'block'; errEl.classList.add('visible'); }
+        if (badge) {
+          badge.className = 'store-badge missing';
+          badge.textContent = 'Failed';
+        }
+
+        setTimeout(() => {
+          overlay.classList.remove('active');
+          if (updateBtn) updateBtn.disabled = false;
+          if (uninstBtn) uninstBtn.disabled = false;
+          if (badge) {
+            badge.className = 'store-badge installed';
+            badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Installed`;
+          }
+        }, 3500);
+
+        es.close();
+        delete _myAppsEventSources[appId];
+        showToast(`Update failed for ${appName}: ${d.message || 'Unknown error'}`, 'err');
+      }
+    } catch (parseErr) {
+      console.warn('[MyApps] SSE parse error:', parseErr);
+    }
+  };
+
+  es.onerror = (err) => {
+    console.warn('[MyApps] SSE error for', appId, err);
+    overlay.classList.remove('active');
+    if (updateBtn) updateBtn.disabled = false;
+    if (uninstBtn) uninstBtn.disabled = false;
+    if (badge) {
+      badge.className = 'store-badge installed';
+      badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Installed`;
+    }
+    showToast(`Connection lost while updating ${appName}`, 'err');
+    es.close();
+    delete _myAppsEventSources[appId];
+  };
+}
+window.updateApp = updateApp;
+
+/**
+ * Cancel an in-progress update for a single app.
+ */
+function cancelAppUpdate(appId) {
+  if (_myAppsEventSources[appId]) {
+    _myAppsEventSources[appId].close();
+    delete _myAppsEventSources[appId];
+  }
+  const overlay   = document.getElementById(`myapp-overlay-${appId}`);
+  const updateBtn = document.getElementById(`myapp-updbtn-${appId}`);
+  const uninstBtn = document.getElementById(`myapp-uninbtn-${appId}`);
+  const badge     = document.getElementById(`myapp-badge-${appId}`);
+
+  if (overlay) overlay.classList.remove('active');
+  if (updateBtn) updateBtn.disabled = false;
+  if (uninstBtn) uninstBtn.disabled = false;
+  if (badge) {
+    badge.className = 'store-badge installed';
+    badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Installed`;
+  }
+}
+window.cancelAppUpdate = cancelAppUpdate;
+
+/**
+ * Update all apps one by one.
+ */
+async function updateAllApps() {
+  const grid = document.getElementById('myapps-grid');
+  if (!grid) return;
+  const cards = grid.querySelectorAll('.store-tool-card.myapp-card');
+  if (!cards.length) {
+    showToast('No installed applications to update.', 'info');
+    return;
+  }
+  for (const card of cards) {
+    const updateBtn = card.querySelector('.tool-action-btn.btn-update');
+    if (updateBtn && !updateBtn.disabled) {
+      updateBtn.click();
+      // Stagger updates by 500ms
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+}
+window.updateAllApps = updateAllApps;
+
+/**
+ * Show the uninstall confirmation dialog using native modal styling.
+ */
+let _pendingUninstall = null;
+function confirmUninstall(appId, appName) {
+  _pendingUninstall = { appId, appName };
+  
+  // Use existing customModal or custom confirm if present
+  if (window.customConfirm) {
+    window.customConfirm(
+      `Are you sure you want to uninstall "${appName}"? This package will be removed from your system.`,
+      () => _executeUninstall(appId, appName)
+    );
+    return;
+  }
+
+  if (confirm(`Uninstall "${appName}" from your system?`)) {
+    _executeUninstall(appId, appName);
+  }
+}
+window.confirmUninstall = confirmUninstall;
+
+/**
+ * Execute the uninstall request and remove the card on success.
+ */
+async function _executeUninstall(appId, appName) {
+  const card      = document.getElementById(`myapp-card-${appId}`);
+  const badge     = document.getElementById(`myapp-badge-${appId}`);
+  const updateBtn = document.getElementById(`myapp-updbtn-${appId}`);
+  const uninstBtn = document.getElementById(`myapp-uninbtn-${appId}`);
+
+  if (badge) {
+    badge.className = 'store-badge trending';
+    badge.textContent = 'Removing…';
+  }
+  if (updateBtn) updateBtn.disabled = true;
+  if (uninstBtn) uninstBtn.disabled = true;
+
+  try {
+    const r = await fetch(`${API}/api/devtools/uninstall`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app_id: appId, confirm: true }),
+    });
+    const d = await r.json();
+
+    if (d.ok) {
+      showToast(`✓ ${appName} uninstalled successfully.`, 'ok');
+      // Animate card removal
+      if (card) {
+        card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.88)';
+        setTimeout(() => {
+          card.remove();
+          _allManagedApps = _allManagedApps.filter(a => (a.app_id || a.name) !== appId);
+          
+          // Update stat total
+          const statTotal = document.getElementById('myapps-stat-total');
+          if (statTotal) statTotal.textContent = _allManagedApps.length;
+
+          // Check if grid is now empty
+          const grid = document.getElementById('myapps-grid');
+          if (grid && !grid.querySelector('.store-tool-card.myapp-card')) {
+            const empty = document.getElementById('myapps-empty');
+            if (empty) empty.classList.remove('hidden');
+          }
+          // Update sidebar badge
+          const navBadge = document.getElementById('myapps-count-badge');
+          if (navBadge) {
+            const remaining = _allManagedApps.length;
+            navBadge.textContent = remaining;
+            if (remaining <= 0) navBadge.style.display = 'none';
+          }
+        }, 320);
+      }
+    } else {
+      showToast(`Could not uninstall ${appName}: ${d.error || d.stderr || 'Unknown error'}`, 'err');
+      if (badge) {
+        badge.className = 'store-badge installed';
+        badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Installed`;
+      }
+      if (updateBtn) updateBtn.disabled = false;
+      if (uninstBtn) uninstBtn.disabled = false;
+    }
+  } catch (err) {
+    showToast(`Could not uninstall ${appName}: ${err.message}`, 'err');
+    if (badge) {
+      badge.className = 'store-badge installed';
+      badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Installed`;
+    }
+    if (updateBtn) updateBtn.disabled = false;
+    if (uninstBtn) uninstBtn.disabled = false;
+  }
+}
+window._executeUninstall = _executeUninstall;
+
+/**
+ * Expose switchView globally so HTML onclick attributes can call it.
+ */
+window.switchView = switchView;
+

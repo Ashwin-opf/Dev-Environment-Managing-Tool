@@ -37,6 +37,10 @@ if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 
+# ── Version and metadata ──────────────────────────────
+from version import __version__, RELEASE_IDENTIFIER
+from db_init import init_all_databases
+
 # ── Shared context (database paths, global singletons) ──
 import app_context  # noqa: F401  (side-effect import; sets up paths/globals)
 
@@ -167,6 +171,12 @@ async def lifespan(app: FastAPI):
     """Runs startup logic, yields for requests, then runs shutdown logic."""
     # --- Startup ---
     try:
+        init_report = init_all_databases()
+        print(f"[PC Doctor] DB lifecycle initialization complete: {init_report.get('status', 'unknown')}")
+    except Exception as err:
+        print(f"[PC Doctor] DB init warning (non-fatal): {err}")
+
+    try:
         from shce_engine import ErrorIntelligenceDB, DB_PATH
         ErrorIntelligenceDB(DB_PATH)  # creates tables if absent
     except Exception as err:
@@ -194,7 +204,7 @@ async def lifespan(app: FastAPI):
 
 # ─── FastAPI application ──────────────────────────────────────────────────────
 
-app = FastAPI(title="PC Doctor API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="PC Doctor API", version=__version__, lifespan=lifespan)
 
 # Restrict CORS to loopback only.  The Tauri webview origin is
 # "tauri://localhost" (v2) which must also be listed.
@@ -333,7 +343,7 @@ async def health_check():
     """
     return {
         "status":  "healthy",
-        "version": "1.0.0",
+        "version": __version__,
         "os":      platform.system(),
     }
 

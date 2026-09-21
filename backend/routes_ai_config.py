@@ -27,7 +27,11 @@ router = APIRouter()
 # Config paths
 # ---------------------------------------------------------------------------
 
-_CONFIG_DIR = Path(__file__).parent / ".pc_doctor_ai_config"
+try:
+    from runtime_paths import get_ai_config_dir
+    _CONFIG_DIR = get_ai_config_dir()
+except Exception:
+    _CONFIG_DIR = Path(__file__).parent / ".pc_doctor_ai_config"
 _CONFIG_FILE = _CONFIG_DIR / "providers.json"
 
 from ai_providers import AI_PROVIDERS, get_provider_adapter, ModelDescriptor

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" crossorigin href="/assets/index-BZTodq7a.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-D24hxaJp.css">
 </head>
 <body>
 <!-- Wallpaper background layer -->
@@ -45,6 +45,7 @@
   <symbol id="icon-x"         viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></symbol>
   <symbol id="icon-shield"    viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
   <symbol id="icon-chart"     viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 20V10M12 20V4M6 20v-6"/></symbol>
+  <symbol id="icon-apps"      viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
 </svg>
 
 <!-- ═══════════════════════════════════════
@@ -68,6 +69,10 @@
     </button>
     <button class="nav-item" data-view="devtools" id="nav-devtools">
       <svg class="nav-icon"><use href="#icon-code"></use></svg> Dev Tools
+    </button>
+    <button class="nav-item" data-view="myapps" id="nav-myapps">
+      <svg class="nav-icon"><use href="#icon-apps"></use></svg> My Apps
+      <span class="myapps-count-badge" id="myapps-count-badge" style="display:none">0</span>
     </button>
     <button class="nav-item" data-view="drivers" id="nav-drivers">
       <svg class="nav-icon"><use href="#icon-monitor"></use></svg> Drivers
@@ -490,6 +495,89 @@
     <!-- Main Tool Grid (For Search Results and Category Filtered Grids) -->
     <div class="card-grid store-grid hidden" id="devtools-grid">
       <!-- Populated by JS -->
+    </div>
+  </section>
+
+  <!-- ── MY APPS (INSTALLED APPS & UPDATES) VIEW ── -->
+  <section class="view" id="view-myapps" role="main" aria-label="My Applications">
+    <!-- View Header matching PC Doctor design system -->
+    <div class="view-header myapps-header-bar">
+      <div class="view-title-block">
+        <h2 class="view-title-text" style="color: var(--apple-cyan); text-shadow: 0 0 15px rgba(90, 200, 250, 0.4); display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.4rem 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;">
+          <svg class="inline-title-icon" style="color: var(--apple-cyan); width: 1.35rem; height: 1.35rem;"><use href="#icon-apps"></use></svg>
+          My Applications
+        </h2>
+        <p class="feature-desc" style="margin: 0; color: var(--text-2); font-size: 0.9rem;">
+          Installed applications and developer tools. Check for live updates with real-time download streaming or safely uninstall packages.
+        </p>
+      </div>
+      <div class="myapps-header-actions" style="display: flex; gap: 0.75rem; align-items: center;">
+        <button class="secondary-btn" id="myapps-refresh-btn" onclick="loadMyApps()" style="padding: 0.5rem 1rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem;">
+          <svg style="width:14px;height:14px;"><use href="#icon-refresh"></use></svg>
+          Refresh
+        </button>
+        <button class="primary-btn" id="myapps-update-all-btn" onclick="updateAllApps()" style="padding: 0.5rem 1.2rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem;">
+          <svg style="width:14px;height:14px;"><use href="#icon-bolt"></use></svg>
+          Update All
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Stat summary row matching SHCE / Dashboard ── -->
+    <div class="shce-tiles-row" style="margin-bottom: 1.5rem;">
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-cyan);"><use href="#icon-apps"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="myapps-stat-total">0</div>
+          <div class="shce-tile-label">Installed Apps</div>
+        </div>
+      </div>
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-green);"><use href="#icon-check"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="myapps-stat-up-to-date">All Ready</div>
+          <div class="shce-tile-label">Update Status</div>
+        </div>
+      </div>
+      <div class="shce-stat-tile">
+        <div class="shce-tile-icon"><svg class="shce-tile-icon-svg" style="color: var(--apple-purple);"><use href="#icon-tool"></use></svg></div>
+        <div class="shce-tile-body">
+          <div class="shce-tile-value" id="myapps-stat-manager">Auto</div>
+          <div class="shce-tile-label">Package Manager</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search & Filter bar matching Dev Tools Store -->
+    <div class="store-search-container" style="margin-bottom: 1.5rem;">
+      <div class="store-search-box">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="myapps-search-input" class="store-search-input" placeholder="Filter installed applications by name, package manager, or category..." oninput="filterMyApps()" autocomplete="off" />
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div class="myapps-loading" id="myapps-loading" style="display:none; text-align: center; padding: 3rem 1rem;">
+      <div class="myapps-spinner" style="margin: 0 auto;"></div>
+      <p style="margin-top:0.75rem;color:var(--text-3);font-size:0.9rem;">Checking managed applications…</p>
+    </div>
+
+    <!-- Empty State matching Store Empty State -->
+    <div class="store-empty-state hidden" id="myapps-empty" style="padding: 4rem 2rem; text-align: center;">
+      <div class="empty-icon" style="font-size: 2.5rem; margin-bottom: 0.8rem; opacity: 0.6;">📦</div>
+      <h3 class="empty-title" style="font-size: 1.25rem; font-weight: 700; color: var(--text-1); margin: 0 0 0.4rem;">No installed apps tracked yet</h3>
+      <p class="empty-desc" style="font-size: 0.88rem; color: var(--text-2); max-width: 420px; margin: 0 auto 1.25rem; line-height: 1.5;">
+        Install developer tools, runtimes, and editors from the <strong>Dev Tools Store</strong> and they will automatically appear here for one-click updates and uninstalls.
+      </p>
+      <button class="primary-btn" onclick="switchView('devtools')">Browse Dev Tools Store</button>
+    </div>
+
+    <!-- Main Grid using exact store-grid class -->
+    <div class="store-grid" id="myapps-grid">
+      <!-- Populated dynamically with .store-tool-card -->
     </div>
   </section>
 

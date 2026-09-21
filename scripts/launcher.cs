@@ -5,7 +5,10 @@ using System.IO;
 class Program {
     static void Main() {
         try {
-            string rootDir = @"C:\Users\srira\.gemini\antigravity\scratch\pc-doc";
+            string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+            DirectoryInfo parent = Directory.GetParent(exeDir);
+            string rootDir = parent != null ? parent.FullName : exeDir;
+
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = "cmd.exe";
             psi.Arguments = "/c node scripts/start.js";

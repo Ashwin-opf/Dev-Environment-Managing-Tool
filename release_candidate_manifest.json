@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "app_name": "PC Doctor",
+  "display_name": "PC Doctor — Intelligent Cross-Platform Developer Environment Manager",
+  "version": "1.0.0-rc.1",
+  "release_identifier": "PC Doctor v1.0.0-rc.1",
+  "release_milestone": "Stage 10 — Release Candidate",
+  "release_type": "Release Candidate",
+  "created_at": "2026-09-21T15:18:00Z",
+  "git_commit": "6364ebb1d61ca169f7e985af8454928ae647fe25",
+  "git_branch": "main",
+  "distribution_readiness": "RELEASE_CANDIDATE_READY",
+  "components": {
+    "backend": {
+      "version": "1.0.0-rc.1",
+      "framework": "FastAPI + Uvicorn",
+      "python_version": ">=3.10, <=3.13",
+      "entrypoint": "backend/main.py",
+      "routes": [
+        "/health",
+        "/api/status/connection",
+        "/api/ai/*",
+        "/api/ai-config/*",
+        "/api/logs/*",
+        "/api/files/*",
+        "/api/system/*",
+        "/api/shce/*",
+        "/api/agent/*",
+        "/api/catalog/*",
+        "/api/control-center/*",
+        "/api/kb/*",
+        "/api/test-lab/*"
+      ]
+    },
+    "frontend": {
+      "version": "1.0.0-rc.1",
+      "framework": "Vite 5.4 + Vanilla JS/CSS",
+      "build_directory": "frontend/dist",
+      "index_html": "frontend/dist/index.html",
+      "bundle_status": "BUILT_AND_VERIFIED"
+    },
+    "desktop_host": {
+      "version": "1.0.0-rc.1",
+      "framework": "Tauri v2 + Rust",
+      "identifier": "com.pcdoctor.app",
+      "window_title": "PC Doctor - Intelligent Developer Environment Manager",
+      "backend_spawner": "src-tauri/src/lib.rs",
+      "code_signing": "NOT_AVAILABLE",
+      "notarization": "NOT_AVAILABLE"
+    }
+  },
+  "runtime_directories": {
+    "windows": {
+      "data_dir": "%LOCALAPPDATA%\\PC Doctor",
+      "log_dir": "%LOCALAPPDATA%\\PC Doctor\\logs",
+      "config_dir": "%APPDATA%\\PC Doctor"
+    },
+    "macos": {
+      "data_dir": "~/Library/Application Support/PC Doctor",
+      "log_dir": "~/Library/Logs/PC Doctor",
+      "config_dir": "~/Library/Application Support/PC Doctor/config"
+    },
+    "linux": {
+      "data_dir": "$XDG_DATA_HOME/pc-doctor or ~/.local/share/pc-doctor",
+      "log_dir": "$XDG_STATE_HOME/pc-doctor/logs or ~/.local/state/pc-doctor/logs",
+      "config_dir": "$XDG_CONFIG_HOME/pc-doctor or ~/.config/pc-doctor"
+    }
+  },
+  "database_architecture": {
+    "runtime_db": {
+      "name": "knowledge.db",
+      "schema_version": "1.0.0",
+      "integrity_enforcement": "PRAGMA integrity_check on startup",
+      "corruption_handling": "Auto-quarantine to .corrupt.<timestamp> + non-crashing rebuild",
+      "tables": [
+        "db_meta",
+        "recipes",
+        "adaptive_knowledge_base",
+        "learned_command_mappings",
+        "self_healing_attempts",
+        "error_intelligence",
+        "shce_queue",
+        "package_knowledge",
+        "safety_overrides"
+      ]
+    },
+    "static_db": {
+      "name": "knowledge_static.db",
+      "role": "Immutable curated reference database",
+      "fts_indexing": "FTS5 virtual table (static_recipes_fts)",
+      "integrity_check": "Validated on startup"
+    },
+    "crash_recovery": {
+      "policy": "Any tasks in 'running', 'in_progress', or 'executing' upon ungraceful shutdown are marked 'interrupted'",
+      "false_success_prevention": "Strictly enforced: exit code 0 alone never implies success; unverified terminated operations are NEVER marked success"
+    }
+  },
+  "release_artifacts": {
+    "windows-x64": {
+      "filename": "pc-doctor-v1.0.0-rc.1-windows-x64.zip",
+      "platform": "Windows 10 / 11 (x64)",
+      "checksum_algorithm": "SHA-256",
+      "signing": "NOT_AVAILABLE",
+      "notarization": "NOT_AVAILABLE",
+      "validation_status": "NATIVELY_VALIDATED"
+    },
+    "linux-x64": {
+      "filename": "pc-doctor-v1.0.0-rc.1-linux-x64.tar.gz",
+      "platform": "Ubuntu 24.04 / Modern Linux (x64)",
+      "checksum_algorithm": "SHA-256",
+      "signing": "NOT_AVAILABLE",
+      "notarization": "NOT_AVAILABLE",
+      "validation_status": "CI_HOSTED_VALIDATED"
+    },
+    "darwin-x64": {
+      "filename": "pc-doctor-v1.0.0-rc.1-darwin-x64.tar.gz",
+      "platform": "macOS 13+ (x64/Apple Silicon via Rosetta)",
+      "checksum_algorithm": "SHA-256",
+      "signing": "NOT_AVAILABLE",
+      "notarization": "NOT_AVAILABLE",
+      "validation_status": "CI_HOSTED_VALIDATED"
+    }
+  },
+  "verification_baseline": {
+    "total_regression_tests_windows": "510 passed, 2 skipped, 0 failures",
+    "stage10_tests": "11 passed, 0 failures",
+    "stage9_tests": "22 passed, 0 failures",
+    "stage8_1_tests_linux": "492 passed, 9 skipped, 0 failures",
+    "stage8_1_tests_macos": "492 passed, 9 skipped, 0 failures"
+  }
+}

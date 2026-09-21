@@ -28,7 +28,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # â”€â”€â”€ Path resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 BASE_DIR = Path(__file__).parent
-DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "knowledge.db"))
+try:
+    from runtime_paths import get_runtime_db_path
+    DB_PATH = os.getenv("DB_PATH", str(get_runtime_db_path()))
+except Exception:
+    DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "knowledge.db"))
 
 # â”€â”€â”€ Cross-platform subprocess wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Always decodes output as UTF-8 to prevent UnicodeDecodeError on Windows.
