@@ -315,6 +315,12 @@ class TestExecutionPipelineConsolidation(unittest.TestCase):
 
         with patch("subprocess.run", side_effect=mock_process_run), \
              patch("time.sleep", return_value=None), \
+             patch.object(state_refresher, "refresh_machine_state", return_value=MagicMock(
+                 pending_reboot=False, low_disk_space=False, dependency_lock=False,
+                 conflicts=False, unusual_state=False, service_issue=False,
+                 package_manager_available=True, free_disk_gb=50.0,
+                 cpu_percent=20.0, ram_percent=30.0, is_normal_state=lambda **kw: (True, []),
+             )), \
              patch.object(verification_engine, "_verify_single_probe", side_effect=mock_verify_attempt):
 
             outcome = execution_engine.execute_command(
@@ -322,6 +328,7 @@ class TestExecutionPipelineConsolidation(unittest.TestCase):
                 target="git",
                 operation="REPAIR",
                 source="STATIC_DB",
+                approved=True,
             )
 
             # Mutation ran ONCE
@@ -362,6 +369,12 @@ class TestExecutionPipelineConsolidation(unittest.TestCase):
             )
 
         with patch("subprocess.run", side_effect=mock_process_run), \
+             patch.object(state_refresher, "refresh_machine_state", return_value=MagicMock(
+                 pending_reboot=False, low_disk_space=False, dependency_lock=False,
+                 conflicts=False, unusual_state=False, service_issue=False,
+                 package_manager_available=True, free_disk_gb=50.0,
+                 cpu_percent=20.0, ram_percent=30.0, is_normal_state=lambda **kw: (True, []),
+             )), \
              patch.object(verification_engine, "verify_tool", side_effect=mock_verify_always_timeout):
 
             outcome = execution_engine.execute_command(
@@ -369,6 +382,7 @@ class TestExecutionPipelineConsolidation(unittest.TestCase):
                 target="git",
                 operation="REPAIR",
                 source="STATIC_DB",
+                approved=True,
             )
 
             # CRITICAL SPEC: Mutation must execute strictly ONCE

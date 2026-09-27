@@ -43,6 +43,13 @@ class CanonicalIdentity:
     functional_probe_expected_exit_code: int = 0
     platform_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     channel: str = "stable"               # "stable", "lts", "beta", "nightly" — for multi-channel tools
+    release_source: str = "static"        # "github", "vendor_api", "static"
+    release_api: str = ""                 # e.g. "https://api.github.com/repos/git-for-windows/git/releases/latest"
+    trusted_repository: str = ""          # e.g. "git-for-windows/git"
+    trusted_download_domains: list[str] = field(default_factory=list) # e.g. ["git-scm.com", "github.com", "objects.githubusercontent.com"]
+    source_policy: str = "package_manager_first" # "package_manager_first", "prefer_upstream", "review_required"
+    checksum_policy: str = "optional"     # "required", "optional"
+    signature_policy: str = "optional"    # "signed_only", "optional"
 
     @property
     def executable_name(self) -> str:
@@ -50,12 +57,21 @@ class CanonicalIdentity:
 
     def get_package_id(self, platform_name: Optional[str] = None) -> str:
         plat = (platform_name or platform.system()).lower()
+        if platform_name and platform_name.lower() in self.platform_overrides:
+            val = self.platform_overrides[platform_name.lower()]
+            if isinstance(val, dict):
+                return str(val.get("package_id", self.package_id))
+            return str(val)
         key = "darwin" if "darwin" in plat or "mac" in plat else ("windows" if "win" in plat else "linux")
         overrides = self.platform_overrides.get(key, {})
         return str(overrides.get("package_id", self.package_id))
 
     def get_package_manager(self, platform_name: Optional[str] = None) -> str:
         plat = (platform_name or platform.system()).lower()
+        if platform_name and platform_name.lower() in self.platform_overrides:
+            val = self.platform_overrides[platform_name.lower()]
+            if isinstance(val, dict) and "package_manager" in val:
+                return str(val["package_manager"])
         key = "darwin" if "darwin" in plat or "mac" in plat else ("windows" if "win" in plat else "linux")
         overrides = self.platform_overrides.get(key, {})
         if "package_manager" in overrides:
@@ -147,6 +163,13 @@ class CanonicalIdentity:
             "functional_probe_expected_exit_code": self.functional_probe_expected_exit_code,
             "platform_overrides": dict(self.platform_overrides),
             "channel": self.channel,
+            "release_source": self.release_source,
+            "release_api": self.release_api,
+            "trusted_repository": self.trusted_repository,
+            "trusted_download_domains": list(self.trusted_download_domains),
+            "source_policy": self.source_policy,
+            "checksum_policy": self.checksum_policy,
+            "signature_policy": self.signature_policy,
         }
 
     @classmethod
@@ -182,6 +205,13 @@ class CanonicalIdentity:
             functional_probe_expected_exit_code=data.get("functional_probe_expected_exit_code", 0),
             platform_overrides=dict(data.get("platform_overrides", {})),
             channel=data.get("channel", "stable"),
+            release_source=data.get("release_source", "static"),
+            release_api=data.get("release_api", ""),
+            trusted_repository=data.get("trusted_repository", ""),
+            trusted_download_domains=list(data.get("trusted_download_domains", [])),
+            source_policy=data.get("source_policy", "package_manager_first"),
+            checksum_policy=data.get("checksum_policy", "optional"),
+            signature_policy=data.get("signature_policy", "optional"),
         )
 
 
@@ -281,6 +311,11 @@ class CanonicalIdentityStore:
                 ],
                 version_command=["git", "--version"],
                 official_url="https://git-scm.com",
+                release_source="github",
+                release_api="https://api.github.com/repos/git-for-windows/git/releases/latest",
+                trusted_repository="git-for-windows/git",
+                trusted_download_domains=["git-scm.com", "github.com", "githubusercontent.com", "objects.githubusercontent.com", "gitforwindows.org"],
+                source_policy="package_manager_first",
                 package_manager=default_pm,
                 os="Any",
                 architecture="Any",
@@ -347,6 +382,11 @@ class CanonicalIdentityStore:
                 ],
                 version_command=["node", "--version"],
                 official_url="https://nodejs.org",
+                release_source="vendor_api",
+                release_api="https://nodejs.org/dist/index.json",
+                trusted_repository="nodejs/node",
+                trusted_download_domains=["nodejs.org", "github.com"],
+                source_policy="package_manager_first",
                 package_manager=default_pm,
                 os="Any",
                 architecture="Any",
@@ -411,6 +451,11 @@ class CanonicalIdentityStore:
                 ],
                 version_command=["code", "--version"],
                 official_url="https://code.visualstudio.com",
+                release_source="vendor_api",
+                release_api="https://update.code.visualstudio.com/api/releases/stable",
+                trusted_repository="microsoft/vscode",
+                trusted_download_domains=["code.visualstudio.com", "visualstudio.com", "update.code.visualstudio.com", "microsoft.com", "github.com"],
+                source_policy="package_manager_first",
                 package_manager=default_pm,
                 os="Any",
                 architecture="Any",
@@ -445,6 +490,11 @@ class CanonicalIdentityStore:
                 ],
                 version_command=["python", "--version"],
                 official_url="https://www.python.org",
+                release_source="vendor_api",
+                release_api="https://www.python.org/api/v2/downloads/release/",
+                trusted_repository="python/cpython",
+                trusted_download_domains=["python.org", "www.python.org"],
+                source_policy="package_manager_first",
                 package_manager=default_pm,
                 os="Any",
                 architecture="Any",

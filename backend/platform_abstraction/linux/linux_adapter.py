@@ -9,8 +9,13 @@ from __future__ import annotations
 from typing import Any
 
 from platform_abstraction.base import PlatformAdapter
+from platform_abstraction.linux.linux_distribution import LinuxDistribution, LinuxDistributionProvider
 from platform_abstraction.linux.linux_environment import LinuxEnvironmentProvider
 from platform_abstraction.linux.linux_machine_state import LinuxMachineStateProvider
+from platform_abstraction.linux.linux_package_manager import (
+    LinuxPackageManagerProvider,
+    LinuxPackageManagerResolver,
+)
 from platform_abstraction.linux.linux_path import LinuxPathManager
 from platform_abstraction.linux.linux_service import LinuxServiceManager
 from platform_abstraction.linux.linux_verification import LinuxVerificationProvider
@@ -26,6 +31,11 @@ class LinuxPlatformAdapter(PlatformAdapter):
         self._service_manager = LinuxServiceManager()
         self._verification_provider = LinuxVerificationProvider(self._service_manager)
         self._machine_state_provider = LinuxMachineStateProvider()
+        self._distribution_provider = LinuxDistributionProvider()
+        self._distribution = self._distribution_provider.detect_distribution()
+        self._package_manager_resolver = LinuxPackageManagerResolver(self._distribution)
+        resolved_pm, _, _ = self._package_manager_resolver.resolve_provider_for_distribution(self._distribution)
+        self._package_manager_provider = resolved_pm
 
     @property
     def platform_name(self) -> str:
@@ -54,4 +64,20 @@ class LinuxPlatformAdapter(PlatformAdapter):
     @property
     def machine_state_provider(self) -> LinuxMachineStateProvider:
         return self._machine_state_provider
+
+    @property
+    def distribution_provider(self) -> LinuxDistributionProvider:
+        return self._distribution_provider
+
+    @property
+    def distribution(self) -> LinuxDistribution:
+        return self._distribution
+
+    @property
+    def package_manager_provider(self) -> Optional[LinuxPackageManagerProvider]:
+        return self._package_manager_provider
+
+    @property
+    def package_manager_resolver(self) -> LinuxPackageManagerResolver:
+        return self._package_manager_resolver
 

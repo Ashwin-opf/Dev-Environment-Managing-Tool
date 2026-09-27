@@ -341,4 +341,34 @@ class PlatformAdapter(ABC):
         """Refreshes and returns the effective environment via the environment provider."""
         return self.environment.refresh_effective_environment()
 
+    @property
+    def distribution_provider(self) -> Optional[Any]:
+        """The distribution provider for this platform (if applicable)."""
+        return None
+
+    @property
+    def distribution(self) -> Optional[Any]:
+        """The detected OS distribution (if applicable)."""
+        return None
+
+    @property
+    def package_manager_provider(self) -> Optional[Any]:
+        """The package manager provider for this platform (if applicable)."""
+        return None
+
+    @property
+    def package_manager_resolver(self) -> Optional[Any]:
+        """The package manager resolver for this platform (if applicable)."""
+        return None
+
+    @property
+    def source_awareness_provider(self) -> Optional[Any]:
+        """The installation source awareness provider for this platform (if applicable)."""
+        return None
+
+    @property
+    def source_awareness(self) -> Optional[Any]:
+        """Alias for source_awareness_provider."""
+        return self.source_awareness_provider
+
 

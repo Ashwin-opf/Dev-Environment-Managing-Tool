@@ -21,6 +21,7 @@ import asyncio
 import json
 import os
 import platform
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -29,6 +30,13 @@ from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple
 
 from authoritative_safety import authoritative_safety, BlockedReason, SafetyGateResult
 from canonical_identity import canonical_store
+from execution_plan import (
+    ExecutionPlan,
+    ExecutionRequest,
+    ExecutionResolver,
+    ProvenanceClass,
+    execution_resolver,
+)
 from execution_tier import ExecutionTier, compute_live_risk, select_execution_tier
 from plan_freeze import resource_lock_mgr
 from recipe_engine import RecipeLifecycle, RecipeOperation, RepairStrategy, StructuredRecipe, recipe_resolver
@@ -107,27 +115,36 @@ class CentralizedExecutionEngine:
         self,
         recipe: StructuredRecipe,
         verification_level: VerificationLevel = VerificationLevel.FAST,
-        trust_score: float = 1.0,
-        confidence_score: float = 1.0,
+        trust_score: Optional[float] = None,
+        confidence_score: Optional[float] = None,
         original_problem: Optional[str] = None,
         timeout: int = 120,
         machine_state: Optional[Any] = None,
+        approved: bool = True,
     ) -> ExecutionOutcome:
         """Synchronously executes a structured recipe through the full authoritative pipeline."""
         target_name = recipe.identity_id
         cmd_str = recipe.to_command_string()
 
-        # 1. Evaluate dynamic live risk and tier
-        if machine_state is None:
-            machine_state = state_refresher.refresh_machine_state(target_identity=target_name)
-        risk_score = compute_live_risk(recipe, machine_state=machine_state)
-        tier, tier_reason = select_execution_tier(
+        # 1. Authoritative Plan Resolution
+        req = ExecutionRequest(
             recipe=recipe,
-            trust_score=trust_score,
-            risk_score=risk_score,
-            confidence_score=confidence_score,
-            machine_state=machine_state,
+            command=cmd_str,
+            target=target_name,
+            operation=recipe.operation.value,
+            source=recipe.source,
+            timeout=timeout,
+            original_problem=original_problem,
+            approved=approved,
+            trust=trust_score,
+            confidence=confidence_score,
         )
+        plan = execution_resolver.resolve(req, machine_state=machine_state)
+        tier = plan.tier
+        tier_reason = plan.tier_reason
+        trust_score = plan.trust_score
+        confidence_score = plan.confidence_score
+        risk_score = plan.risk_score
 
         if tier == ExecutionTier.BLOCKED:
             structured_logger.log_event(
@@ -147,6 +164,8 @@ class CentralizedExecutionEngine:
             return ExecutionOutcome(
                 success=False,
                 status="BLOCKED",
+                execution_status="EXECUTION_FAILED",
+                verification_status="NOT_RUN",
                 operation=recipe.operation.value,
                 target=target_name,
                 command=cmd_str,
@@ -160,6 +179,44 @@ class CentralizedExecutionEngine:
                 risk=risk_score,
                 confidence=confidence_score,
                 message=tier_reason,
+            )
+
+        # 2. Centralized Approval & Authorization Enforcement
+        if approved is False or (not plan.is_automatically_authorized and tier.requires_approval and not approved):
+            reason = "Execution cancelled: user explicitly declined approval." if approved is False else f"Execution tier '{tier.value}' requires explicit user approval before execution."
+            structured_logger.log_event(
+                operation=recipe.operation.value,
+                application=target_name,
+                identity=target_name,
+                status="APPROVAL_REQUIRED",
+                message=reason,
+                command=cmd_str,
+                recipe_id=recipe.recipe_id,
+                source=recipe.source,
+                tier=tier.value,
+                trust=trust_score,
+                risk=risk_score,
+                confidence=confidence_score,
+            )
+            return ExecutionOutcome(
+                success=False,
+                status="APPROVAL_REQUIRED",
+                execution_status="NOT_RUN",
+                verification_status="NOT_RUN",
+                operation=recipe.operation.value,
+                target=target_name,
+                command=cmd_str,
+                return_code=None,
+                stdout="",
+                stderr=reason,
+                classification="APPROVAL_REQUIRED",
+                verification={},
+                tier=tier.value,
+                trust=trust_score,
+                risk=risk_score,
+                confidence=confidence_score,
+                message=reason,
+                details={"requires_approval": True, "tier": tier.value, "approval_required": True},
             )
 
         # 2. Acquire fine-grained resource locks
@@ -376,10 +433,11 @@ class CentralizedExecutionEngine:
         self,
         recipe: StructuredRecipe,
         verification_level: VerificationLevel = VerificationLevel.FAST,
-        trust_score: float = 1.0,
-        confidence_score: float = 1.0,
+        trust_score: Optional[float] = None,
+        confidence_score: Optional[float] = None,
         original_problem: Optional[str] = None,
         timeout: int = 1800,
+        approved: bool = True,
     ) -> AsyncGenerator[str, None]:
         """
         Executes a recipe streaming actual SSE events in real-time.
@@ -388,11 +446,41 @@ class CentralizedExecutionEngine:
         target_name = recipe.identity_id
         cmd_str = recipe.to_command_string()
 
+        # Stage 0: Plan & Tier Resolution
+        req = ExecutionRequest(
+            recipe=recipe,
+            command=cmd_str,
+            target=target_name,
+            operation=recipe.operation.value,
+            source=recipe.source,
+            timeout=timeout,
+            original_problem=original_problem,
+            approved=approved,
+            trust=trust_score,
+            confidence=confidence_score,
+        )
+        m_state = state_refresher.refresh_machine_state(target_identity=target_name)
+        plan = execution_resolver.resolve(req, machine_state=m_state)
+
+        if plan.tier == ExecutionTier.BLOCKED:
+            err_msg = f"Execution blocked: {plan.tier_reason}"
+            yield f"data: {json.dumps({'type': 'error', 'message': err_msg, 'classification': 'RISK_ABOVE_HARD_LIMIT'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'returncode': -1, 'status': 'BLOCKED', 'execution_status': 'EXECUTION_FAILED', 'verification_status': 'NOT_RUN', 'message': err_msg})}\n\n"
+            return
+
+        if approved is False or (not plan.is_automatically_authorized and plan.tier.requires_approval and not approved):
+            reason = "Execution cancelled: user explicitly declined approval." if approved is False else f"Execution tier '{plan.tier.value}' requires explicit user approval before execution."
+            yield f"data: {json.dumps({'type': 'error', 'message': reason, 'classification': 'APPROVAL_REQUIRED'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'returncode': -1, 'status': 'APPROVAL_REQUIRED', 'execution_status': 'NOT_RUN', 'verification_status': 'NOT_RUN', 'classification': 'APPROVAL_REQUIRED', 'message': reason, 'approval_required': True, 'tier': plan.tier.value})}\n\n"
+            return
+
+        if plan.is_automatically_authorized:
+            yield f"data: {json.dumps({'type': 'stage', 'stage': 'AUTHORIZING', 'message': 'Trusted repair. Executing automatically...', 'auto_authorized': True})}\n\n"
+
         # Stage 1: Assessment & Live Pre-Execution Gate
         yield f"data: {json.dumps({'type': 'stage', 'stage': 'PREPARING', 'message': f'Preparing {recipe.operation.value} for {target_name}...' })}\n\n"
         await asyncio.sleep(0.01)
 
-        m_state = state_refresher.refresh_machine_state(target_identity=target_name)
         safety_res = authoritative_safety.live_pre_execution_gate(
             command=cmd_str,
             operation=recipe.operation.value,
@@ -574,8 +662,8 @@ class CentralizedExecutionEngine:
                 return_code=rc,
                 versions={"detected": verif_res.version_detected if verif_res else None},
                 verification=verif_res.to_dict() if verif_res else {},
-                trust=trust_score,
-                confidence=confidence_score,
+                trust=plan.trust_score,
+                confidence=plan.confidence_score,
             )
 
             # State refresh
@@ -640,7 +728,7 @@ class CentralizedExecutionEngine:
         elevate: bool = False,
         scope: Optional[str] = None,
         title: Optional[str] = None,
-        source: str = "DYNAMIC_DB",
+        source: str = "UNRESOLVED",
         timeout: int = 120,
         original_problem: Optional[str] = None,
         trigger_shce: bool = True,
@@ -648,7 +736,7 @@ class CentralizedExecutionEngine:
         pm: Optional[str] = None,
         tier: Optional[Any] = None,
         owner_id: Optional[str] = None,
-        approved: bool = False,
+        approved: Optional[bool] = None,
         **kwargs: Any,
     ) -> ExecutionOutcome:
         """
@@ -700,50 +788,37 @@ class CentralizedExecutionEngine:
                 message=reason,
             )
 
-        # 2. Recipe resolution / synthesis
-        pm = pm or self._detect_pm(clean_cmd)
-        op_enum = RecipeOperation.REPAIR
-        try:
-            op_enum = RecipeOperation(operation.upper())
-        except Exception:
-            pass
+        # 2. Phase 0.1 Invariant: Approval gate fires BEFORE any subprocess / state refresh.
+        #    Use a lightweight default MachineState for initial plan resolution so that
+        #    no subprocess is spawned until the approval check has passed.
+        from machine_state import MachineState as _MachineState
+        _sentinel_state = _MachineState(free_disk_gb=50.0)  # conservative defaults, no subprocess calls
+        req = ExecutionRequest(
+            command=clean_cmd,
+            target=target or target_name,
+            operation=operation,
+            source=source,
+            elevate=elevate,
+            scope=scope,
+            title=title,
+            timeout=timeout,
+            original_problem=original_problem,
+            trigger_shce=trigger_shce,
+            pm=pm,
+            tier=tier,
+            owner_id=owner_id,
+            approved=approved,
+        )
+        plan = execution_resolver.resolve(req, machine_state=_sentinel_state)
 
-        recipe = recipe_resolver.resolve_recipe(target_name, operation=op_enum)
-        if not recipe:
-            tokens = clean_cmd.split()
-            exec_name = tokens[0] if tokens else ""
-            args = tokens[1:] if len(tokens) > 1 else []
-            recipe = StructuredRecipe(
-                recipe_id=f"cmd_{abs(hash(clean_cmd)) % 100000}",
-                recipe_version=1,
-                identity_id=target_name,
-                operation=op_enum,
-                os=platform.system(),
-                architecture="x64",
-                package_manager=pm,
-                executable=exec_name,
-                arguments=args,
-                verification_command=[exec_name, "--version"] if exec_name else [],
-                risk_base="Low",
-                source=source,
-                repair_strategy=RepairStrategy.NATIVE,
-                validation_status=RecipeLifecycle.READY_FOR_EXECUTION,
-            )
-
-        # 3. Live risk and tier evaluation (TIER / APPROVAL)
-        machine_state = state_refresher.refresh_machine_state(target_identity=target_name)
-        requires_elev = bool(elevate or scope == "machine")
-        risk_score = compute_live_risk(recipe, machine_state=machine_state, requires_elevation=requires_elev)
-        if tier is None:
-            tier, tier_reason = select_execution_tier(
-                recipe=recipe,
-                trust_score=1.0 if source == "STATIC_DB" else 0.85,
-                risk_score=risk_score,
-                confidence_score=1.0,
-                machine_state=machine_state,
-            )
-        else:
-            tier_reason = f"Explicit tier: {tier}"
+        recipe = plan.recipe
+        tier = plan.tier
+        tier_reason = plan.tier_reason
+        risk_score = plan.risk_score
+        trust_score = plan.trust_score
+        confidence_score = plan.confidence_score
+        pm = plan.pm
+        target_name = plan.target_name
 
         if tier == ExecutionTier.BLOCKED:
             return ExecutionOutcome(
@@ -766,7 +841,56 @@ class CentralizedExecutionEngine:
                 message=tier_reason,
             )
 
-        # 4. Privilege Resolution
+        # 3. Centralized Approval Enforcement (Section 6)
+        #    Fires BEFORE any subprocess — satisfies Phase 0.1 invariant.
+        #    NOTE: is_elevation_prompted reflects caller-initiated elevation intent ONLY
+        #    (elevate=True or scope='machine'). We do NOT use tier == TIER_3_ELEVATED_ADMIN
+        #    because TIER_3_ELEVATED_ADMIN is an alias for TIER_3_FULL_PROTECTED (same value),
+        #    which would bypass the approval gate for ALL TIER_3 commands.
+        is_elevation_prompted = bool(elevate or scope == "machine")
+        if approved is False or (not plan.is_automatically_authorized and tier.requires_approval and (not approved and not is_elevation_prompted)):
+            reason = "Execution cancelled: user explicitly declined approval." if approved is False else f"Execution tier '{tier.value}' requires explicit user approval before execution."
+            structured_logger.log_event(
+                operation=operation,
+                application=target_name,
+                identity=target_name,
+                status="APPROVAL_REQUIRED",
+                message=reason,
+                command=clean_cmd,
+                source=plan.source,
+                tier=tier.value,
+                trust=trust_score,
+                risk=risk_score,
+                confidence=confidence_score,
+            )
+            return ExecutionOutcome(
+                success=False,
+                status="APPROVAL_REQUIRED",
+                execution_status="NOT_RUN",
+                verification_status="NOT_RUN",
+                operation=operation,
+                target=target_name,
+                command=clean_cmd,
+                return_code=None,
+                stdout="",
+                stderr=reason,
+                classification="APPROVAL_REQUIRED",
+                verification={},
+                tier=tier.value,
+                trust=trust_score,
+                risk=risk_score,
+                confidence=confidence_score,
+                message=reason,
+                details={"requires_approval": True, "tier": tier.value, "approval_required": True},
+            )
+
+        # 4. Deferred full machine state refresh — only runs after approval is confirmed.
+        #    Phase 0.1 invariant: no subprocess spawned before approval gate.
+        #    The tier from the sentinel resolve is used for execution; the real machine_state
+        #    is passed to the safety gate for disk/lock/reboot live checks.
+        machine_state = state_refresher.refresh_machine_state(target_identity=target_name)
+
+        # 4b. Privilege Resolution
         from privilege_manager import privilege_manager
         privilege_manager.resolve_privilege(tier=tier, elevate=elevate, scope=scope)
 
@@ -774,7 +898,7 @@ class CentralizedExecutionEngine:
         safety_res = authoritative_safety.live_pre_execution_gate(
             command=clean_cmd,
             operation=operation,
-            is_static_recipe=(source == "STATIC_DB"),
+            is_static_recipe=(plan.provenance_class == ProvenanceClass.STATIC_RECIPE),
             recipe=recipe,
             machine_state=machine_state,
             package_manager=pm,
@@ -854,6 +978,7 @@ class CentralizedExecutionEngine:
         out = ""
         err = ""
         rc = 0
+        is_proc_timeout = False
 
         try:
             # 6. Execution (guarded by permanent safety authorization invariant)
@@ -861,7 +986,7 @@ class CentralizedExecutionEngine:
             from privilege_manager import privilege_manager
             from feature_flags import ENABLE_DEV_MODE
 
-            if tier == ExecutionTier.TIER_3_ELEVATED_ADMIN or elevate or scope == "machine":
+            if elevate or scope == "machine":
                 out, err, rc = privilege_manager.run_with_elevation(clean_cmd, title=title or target_name)
                 if privilege_manager.is_cancelled_by_user(rc, err) or rc == 1223 or "permission was not granted" in (err or "").lower():
                     cancel_rc = rc if rc != 0 else 1223
@@ -888,9 +1013,9 @@ class CentralizedExecutionEngine:
                         classification="USER_DECLINED_ELEVATION",
                         verification={},
                         tier=tier.value,
-                        trust=0.9,
+                        trust=trust_score,
                         risk=risk_score,
-                        confidence=1.0,
+                        confidence=confidence_score,
                         message="Administrator permission was not granted. System state was not changed.",
                         details={"requires_elevation": True, "code": "ELEVATION_CANCELLED"},
                     )
@@ -944,13 +1069,23 @@ class CentralizedExecutionEngine:
                 if policy.stabilization_grace > 0:
                     time.sleep(policy.stabilization_grace)
 
-                verif_res = verification_engine.verify_tool(
-                    target_name_or_id=target_name,
-                    level=VerificationLevel.CONTROLLED,
-                    recipe=recipe,
-                    original_problem=original_problem,
-                    policy=policy,
+                is_verifiable_target = (
+                    recipe is not None
+                    or canonical_store.resolve(target_name) is not None
+                    or source in ("STATIC_DB", "SYSTEM", "REPAIR")
+                    or (operation and operation.upper() == "UNINSTALL")
+                    or bool(shutil.which(target_name))
                 )
+
+                if is_verifiable_target:
+                    verif_res = verification_engine.verify_tool(
+                        target_name_or_id=target_name,
+                        level=VerificationLevel.CONTROLLED,
+                        recipe=recipe,
+                        original_problem=original_problem,
+                        policy=policy,
+                        operation=operation,
+                    )
 
                 try:
                     from dev_environment_detector import dev_environment_detector
@@ -970,21 +1105,32 @@ class CentralizedExecutionEngine:
                         _shce.handle_failure(command=clean_cmd, error=err, source="execution_engine", auto_queue=True)
                     except Exception:
                         pass
-            elif (verif_res and verif_res.status == VerificationStatus.VERIFICATION_TIMEOUT) or (post_verify and (post_verify.get("status") == "VERIFICATION_TIMEOUT" or post_verify.get("timed_out"))):
-                final_status = "VERIFICATION_TIMEOUT"
-                exec_status = "EXECUTION_SUCCEEDED"
-                verif_status = "VERIFICATION_TIMEOUT"
-                success = False
-            elif (verif_res and verif_res.status == VerificationStatus.VERIFIED) or (post_verify and post_verify.get("verified")):
-                final_status = "VERIFIED"
-                exec_status = "EXECUTION_SUCCEEDED"
-                verif_status = "VERIFIED"
-                success = True
             else:
-                final_status = "VERIFICATION_FAILED"
-                exec_status = "EXECUTION_SUCCEEDED"
-                verif_status = "VERIFICATION_FAILED"
-                success = False
+                is_generic_fallback = (
+                    bool(post_verify) and
+                    not post_verify.get("details") and
+                    (
+                        post_verify.get("message", "").startswith("Command execution completed")
+                        or post_verify.get("message", "").startswith("Command completed")
+                    )
+                )
+                has_domain_verification = bool(post_verify and post_verify.get("verified") and not is_generic_fallback)
+
+                if (verif_res and verif_res.status == VerificationStatus.VERIFICATION_TIMEOUT) or (not verif_res and post_verify and (post_verify.get("status") == "VERIFICATION_TIMEOUT" or post_verify.get("timed_out"))):
+                    final_status = "VERIFICATION_TIMEOUT"
+                    exec_status = "EXECUTION_SUCCEEDED"
+                    verif_status = "VERIFICATION_TIMEOUT"
+                    success = False
+                elif (verif_res and verif_res.status == VerificationStatus.VERIFIED) or (verif_res is None and post_verify and post_verify.get("verified")) or has_domain_verification:
+                    final_status = "VERIFIED"
+                    exec_status = "EXECUTION_SUCCEEDED"
+                    verif_status = "VERIFIED"
+                    success = True
+                else:
+                    final_status = "VERIFICATION_FAILED"
+                    exec_status = "EXECUTION_SUCCEEDED"
+                    verif_status = "VERIFICATION_FAILED"
+                    success = False
 
             explanation = classified.get("explanation", "") if isinstance(classified, dict) else ""
             if is_proc_timeout or rc == 124:
@@ -1019,13 +1165,15 @@ class CentralizedExecutionEngine:
                 status=final_status,
                 message=msg,
                 command=clean_cmd,
-                recipe_id=recipe.recipe_id,
+                recipe_id=recipe.recipe_id if recipe else None,
                 source=source,
                 return_code=rc,
                 versions={"detected": verif_res.version_detected if verif_res else (post_verify.get("details", {}).get("version") if post_verify else None)},
                 verification=verif_dict,
-                trust=0.9,
-                confidence=1.0,
+                tier=tier.value,
+                trust=trust_score,
+                risk=risk_score,
+                confidence=confidence_score,
             )
 
             return ExecutionOutcome(
@@ -1042,9 +1190,9 @@ class CentralizedExecutionEngine:
                 classification=final_classification,
                 verification=verif_dict,
                 tier=tier.value,
-                trust=0.9,
+                trust=trust_score,
                 risk=risk_score,
-                confidence=1.0,
+                confidence=confidence_score,
                 message=msg,
                 details={
                     "classification": classified if isinstance(classified, dict) else {},
@@ -1067,7 +1215,7 @@ class CentralizedExecutionEngine:
         elevate: bool = False,
         scope: Optional[str] = None,
         title: Optional[str] = None,
-        source: str = "DYNAMIC_DB",
+        source: str = "UNRESOLVED",
         timeout: int = 1800,
         original_problem: Optional[str] = None,
         trigger_shce: bool = True,
@@ -1075,6 +1223,7 @@ class CentralizedExecutionEngine:
         pm: Optional[str] = None,
         tier: Optional[Any] = None,
         owner_id: Optional[str] = None,
+        approved: Optional[bool] = None,
         **kwargs: Any,
     ) -> Generator[Dict[str, Any], None, None]:
         """
@@ -1099,10 +1248,20 @@ class CentralizedExecutionEngine:
                 reason = "Command matches blacklisted destructive pattern."
             elif is_natural_language_command(clean_cmd):
                 reason = "Natural language recommendation cannot be executed as a command."
-            yield {"type": "log", "text": f"[Safety Blocked]: {reason}", "stream": "stderr"}
+
+            structured_logger.log_event(
+                operation=operation,
+                application=target_name,
+                identity=target_name,
+                status="BLOCKED",
+                message=reason,
+                command=clean_cmd,
+                source=source,
+            )
+            yield {"type": "log", "text": f"[Safety Policy Blocked]: {reason}", "stream": "stderr"}
             yield {
                 "type": "done",
-                "returncode": 1,
+                "returncode": -1,
                 "stdout": "",
                 "stderr": reason,
                 "ok": False,
@@ -1112,50 +1271,36 @@ class CentralizedExecutionEngine:
             }
             return
 
-        # 2. Recipe resolution / synthesis
-        pm = pm or self._detect_pm(clean_cmd)
-        op_enum = RecipeOperation.REPAIR
-        try:
-            op_enum = RecipeOperation(operation.upper())
-        except Exception:
-            pass
+        # 2. Phase 0.1 Invariant: Approval gate fires BEFORE any subprocess / state refresh.
+        #    Use a lightweight default MachineState for initial plan resolution.
+        from machine_state import MachineState as _MachineState
+        _sentinel_state = _MachineState(free_disk_gb=50.0)  # conservative defaults, no subprocess calls
+        req = ExecutionRequest(
+            command=clean_cmd,
+            target=target or target_name,
+            operation=operation,
+            source=source,
+            elevate=elevate,
+            scope=scope,
+            title=title,
+            timeout=timeout,
+            original_problem=original_problem,
+            trigger_shce=trigger_shce,
+            pm=pm,
+            tier=tier,
+            owner_id=owner_id,
+            approved=approved,
+        )
+        plan = execution_resolver.resolve(req, machine_state=_sentinel_state)
 
-        recipe = recipe_resolver.resolve_recipe(target_name, operation=op_enum)
-        if not recipe:
-            tokens = clean_cmd.split()
-            exec_name = tokens[0] if tokens else ""
-            args = tokens[1:] if len(tokens) > 1 else []
-            recipe = StructuredRecipe(
-                recipe_id=f"cmd_{abs(hash(clean_cmd)) % 100000}",
-                recipe_version=1,
-                identity_id=target_name,
-                operation=op_enum,
-                os=platform.system(),
-                architecture="x64",
-                package_manager=pm,
-                executable=exec_name,
-                arguments=args,
-                verification_command=[exec_name, "--version"] if exec_name else [],
-                risk_base="Low",
-                source=source,
-                repair_strategy=RepairStrategy.NATIVE,
-                validation_status=RecipeLifecycle.READY_FOR_EXECUTION,
-            )
-
-        # 3. Live risk and tier evaluation (TIER / APPROVAL)
-        machine_state = state_refresher.refresh_machine_state(target_identity=target_name)
-        requires_elev = bool(elevate or scope == "machine")
-        risk_score = compute_live_risk(recipe, machine_state=machine_state, requires_elevation=requires_elev)
-        if tier is None:
-            tier, tier_reason = select_execution_tier(
-                recipe=recipe,
-                trust_score=1.0 if source == "STATIC_DB" else 0.85,
-                risk_score=risk_score,
-                confidence_score=1.0,
-                machine_state=machine_state,
-            )
-        else:
-            tier_reason = f"Explicit tier: {tier}"
+        recipe = plan.recipe
+        tier = plan.tier
+        tier_reason = plan.tier_reason
+        risk_score = plan.risk_score
+        trust_score = plan.trust_score
+        confidence_score = plan.confidence_score
+        pm = plan.pm
+        target_name = plan.target_name
 
         if tier == ExecutionTier.BLOCKED:
             yield {"type": "log", "text": f"[Tier Selection Blocked]: {tier_reason}", "stream": "stderr"}
@@ -1171,7 +1316,44 @@ class CentralizedExecutionEngine:
             }
             return
 
-        # 4. Privilege Resolution
+        # 3. Centralized Approval Enforcement (Section 6)
+        #    is_elevation_prompted: caller-initiated elevation only (elevate=True or scope='machine').
+        is_elevation_prompted = bool(elevate or scope == "machine")
+        if approved is False or (not plan.is_automatically_authorized and tier.requires_approval and (not approved and not is_elevation_prompted)):
+            reason = "Execution cancelled: user explicitly declined approval." if approved is False else f"Execution tier '{tier.value}' requires explicit user approval before execution."
+            yield {"type": "log", "text": f"[Approval Required]: {reason}", "stream": "stderr"}
+            yield {
+                "type": "done",
+                "returncode": -1,
+                "stdout": "",
+                "stderr": reason,
+                "ok": False,
+                "status": "APPROVAL_REQUIRED",
+                "execution_status": "NOT_RUN",
+                "verification_status": "NOT_RUN",
+                "classification": "APPROVAL_REQUIRED",
+                "message": reason,
+                "approval_required": True,
+                "tier": tier.value,
+            }
+            return
+
+        if plan.is_automatically_authorized:
+            yield {
+                "type": "stage",
+                "stage": "AUTHORIZING",
+                "message": plan.authorization_reason or "Trusted repair. Executing automatically...",
+                "tier": tier.value,
+                "trust": trust_score,
+                "risk": risk_score,
+                "auto_authorized": True,
+            }
+
+        # 4. Deferred full machine state refresh — only runs after approval is confirmed.
+        #    Phase 0.1 invariant: no subprocess spawned before approval gate.
+        machine_state = state_refresher.refresh_machine_state(target_identity=target_name)
+
+        # 4b. Privilege Resolution
         from privilege_manager import privilege_manager
         privilege_manager.resolve_privilege(tier=tier, elevate=elevate, scope=scope)
 
@@ -1179,7 +1361,7 @@ class CentralizedExecutionEngine:
         safety_res = authoritative_safety.live_pre_execution_gate(
             command=clean_cmd,
             operation=operation,
-            is_static_recipe=(source == "STATIC_DB"),
+            is_static_recipe=(plan.provenance_class == ProvenanceClass.STATIC_RECIPE),
             recipe=recipe,
             machine_state=machine_state,
             package_manager=pm,
@@ -1252,7 +1434,7 @@ class CentralizedExecutionEngine:
             from privilege_manager import privilege_manager
             from feature_flags import ENABLE_DEV_MODE
 
-            if tier == ExecutionTier.TIER_3_ELEVATED_ADMIN or elevate or scope == "machine":
+            if elevate or scope == "machine":
                 yield {"type": "progress", "percent": 30, "state": "ELEVATION_REQUESTED", "detail": "Awaiting Administrator approval"}
                 yield {"type": "log", "text": "Requesting administrator elevation...", "stream": "stdout"}
 
@@ -1431,14 +1613,24 @@ class CentralizedExecutionEngine:
                     elif ev_type == "VERIFICATION_SUCCEEDED":
                         line = f"[Verification Succeeded] Operational status verified on attempt {att}."
 
-                verif_res = verification_engine.verify_tool(
-                    target_name_or_id=target_name,
-                    level=VerificationLevel.CONTROLLED,
-                    recipe=recipe,
-                    original_problem=original_problem,
-                    policy=policy,
-                    on_attempt=on_attempt,
+                is_verifiable_target = (
+                    recipe is not None
+                    or canonical_store.resolve(target_name) is not None
+                    or source in ("STATIC_DB", "SYSTEM", "REPAIR")
+                    or (operation and operation.upper() == "UNINSTALL")
+                    or bool(shutil.which(target_name))
                 )
+
+                if is_verifiable_target:
+                    verif_res = verification_engine.verify_tool(
+                        target_name_or_id=target_name,
+                        level=VerificationLevel.CONTROLLED,
+                        recipe=recipe,
+                        original_problem=original_problem,
+                        policy=policy,
+                        on_attempt=on_attempt,
+                        operation=operation,
+                    )
 
                 try:
                     from dev_environment_detector import dev_environment_detector
@@ -1458,21 +1650,32 @@ class CentralizedExecutionEngine:
                         _shce.handle_failure(command=clean_cmd, error=full_stderr, source="execution_engine", auto_queue=True)
                     except Exception:
                         pass
-            elif (verif_res and verif_res.status == VerificationStatus.VERIFICATION_TIMEOUT) or (post_verify and (post_verify.get("status") == "VERIFICATION_TIMEOUT" or post_verify.get("timed_out"))):
-                final_status = "VERIFICATION_TIMEOUT"
-                exec_status = "EXECUTION_SUCCEEDED"
-                verif_status = "VERIFICATION_TIMEOUT"
-                success = False
-            elif (verif_res and verif_res.status == VerificationStatus.VERIFIED) or (post_verify and post_verify.get("verified")):
-                final_status = "VERIFIED"
-                exec_status = "EXECUTION_SUCCEEDED"
-                verif_status = "VERIFIED"
-                success = True
             else:
-                final_status = "VERIFICATION_FAILED"
-                exec_status = "EXECUTION_SUCCEEDED"
-                verif_status = "VERIFICATION_FAILED"
-                success = False
+                is_generic_fallback = (
+                    bool(post_verify) and
+                    not post_verify.get("details") and
+                    (
+                        post_verify.get("message", "").startswith("Command execution completed")
+                        or post_verify.get("message", "").startswith("Command completed")
+                    )
+                )
+                has_domain_verification = bool(post_verify and post_verify.get("verified") and not is_generic_fallback)
+
+                if (verif_res and verif_res.status == VerificationStatus.VERIFICATION_TIMEOUT) or (not verif_res and post_verify and (post_verify.get("status") == "VERIFICATION_TIMEOUT" or post_verify.get("timed_out"))):
+                    final_status = "VERIFICATION_TIMEOUT"
+                    exec_status = "EXECUTION_SUCCEEDED"
+                    verif_status = "VERIFICATION_TIMEOUT"
+                    success = False
+                elif (verif_res and verif_res.status == VerificationStatus.VERIFIED) or (verif_res is None and post_verify and post_verify.get("verified")) or has_domain_verification:
+                    final_status = "VERIFIED"
+                    exec_status = "EXECUTION_SUCCEEDED"
+                    verif_status = "VERIFIED"
+                    success = True
+                else:
+                    final_status = "VERIFICATION_FAILED"
+                    exec_status = "EXECUTION_SUCCEEDED"
+                    verif_status = "VERIFICATION_FAILED"
+                    success = False
 
             explanation = classified.get("explanation", "") if isinstance(classified, dict) else ""
             if rc == 124:
@@ -1507,13 +1710,15 @@ class CentralizedExecutionEngine:
                 status=final_status,
                 message=msg,
                 command=clean_cmd,
-                recipe_id=recipe.recipe_id,
+                recipe_id=recipe.recipe_id if recipe else None,
                 source=source,
                 return_code=rc,
                 versions={"detected": verif_res.version_detected if verif_res else (post_verify.get("details", {}).get("version") if post_verify else None)},
                 verification=verif_dict,
-                trust=0.9,
-                confidence=1.0,
+                tier=tier.value,
+                trust=trust_score,
+                risk=risk_score,
+                confidence=confidence_score,
             )
 
             done_event = {
@@ -1535,6 +1740,10 @@ class CentralizedExecutionEngine:
                 "message": msg,
                 "stdout": full_stdout,
                 "stderr": full_stderr,
+                "tier": tier.value,
+                "trust": trust_score,
+                "risk": risk_score,
+                "confidence": confidence_score,
                 "executed_but_unverified": (rc == 0 and final_status == "VERIFICATION_TIMEOUT"),
             }
             yield done_event

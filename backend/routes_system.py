@@ -77,6 +77,8 @@ class ExecuteRequest(BaseModel):
     recommended_action: Optional[str] = None
     directory: Optional[str] = None
     operation: Optional[str] = None
+    approved: bool = True
+    confirmed: bool = False
 
 
 class SearchRequest(BaseModel):
@@ -710,7 +712,8 @@ async def execute_command(req: ExecuteRequest):
             "closed_apps": closed_apps,
         }
 
-    out, err, rc = engine.run(req.command, elevate=req.elevate, scope=req.scope, title=req.title)
+    is_approved = req.approved or req.confirmed
+    out, err, rc = engine.run(req.command, elevate=req.elevate, scope=req.scope, title=req.title, source=source, approved=is_approved)
     if rc == 1223 or "permission was not granted" in (err or "").lower():
         return {
             "ok": False,
@@ -921,7 +924,8 @@ async def execute_command_stream(req: ExecuteRequest):
         full_stderr = ""
         rc = 0
         last_done_event = None
-        for event in engine.stream_run(req.command, trigger_shce=True, timeout=1800, elevate=req.elevate, scope=req.scope, title=req.title):
+        is_approved = req.approved or req.confirmed
+        for event in engine.stream_run(req.command, trigger_shce=True, timeout=1800, elevate=req.elevate, scope=req.scope, title=req.title, source=source, approved=is_approved):
             if event["type"] == "done":
                 last_done_event = event
                 full_stdout = event.get("stdout", "")
@@ -3035,97 +3039,50 @@ async def devtools_update_stream(app_id: str = "", request: Request = None):
         raise HTTPException(status_code=400, detail=f"No update command defined for '{app_id}'")
 
     async def _stream_update():
-        """Async generator that yields SSE-formatted JSON progress events."""
+        """Async generator that yields SSE-formatted JSON progress events via CentralizedExecutionEngine."""
 
         def _sse(data: dict) -> str:
             return f"data: {_json.dumps(data)}\n\n"
 
         try:
-            # Phase 1: fetching (0 → 30%)
             yield _sse({"phase": "fetching", "pct": 0, "message": "Preparing update…"})
-            await asyncio.sleep(0.3)
-            yield _sse({"phase": "fetching", "pct": 10, "message": "Fetching package metadata…"})
 
-            # Launch the update process
-            proc = await asyncio.create_subprocess_shell(
-                update_command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env={**os.environ, "DEBIAN_FRONTEND": "noninteractive"},
+            from execution_engine import execution_engine
+            events = execution_engine.stream_execute_command(
+                command=update_command,
+                target=app_id,
+                operation="UPDATE",
+                source="DEVTOOLS",
+                approved=True,
             )
 
-            yield _sse({"phase": "fetching", "pct": 20, "message": "Downloading packages…"})
-
-            # Phase 2: installing — read lines and increment progress 30→80%
-            install_pct = 30
-            lines_seen = 0
             stdout_lines = []
+            install_pct = 10
+            lines_seen = 0
 
-            while True:
-                # Check if client disconnected
-                if request and await request.is_disconnected():
-                    proc.kill()
-                    return
-
-                try:
-                    line_bytes = await asyncio.wait_for(proc.stdout.readline(), timeout=60.0)
-                except asyncio.TimeoutError:
-                    break
-
-                if not line_bytes:
-                    break
-
-                line = line_bytes.decode("utf-8", errors="replace").rstrip()
-                stdout_lines.append(line)
-                lines_seen += 1
-
-                # Advance install progress based on output lines (30-80%)
-                if install_pct < 80:
-                    install_pct = min(80, 30 + lines_seen * 3)
-
-                phase = "installing"
-                msg = line if line else "Installing…"
-                # Trim long messages for the UI
-                if len(msg) > 80:
-                    msg = msg[:77] + "…"
-
-                yield _sse({"phase": phase, "pct": install_pct, "message": msg})
-
-            # Wait for process to finish (with timeout)
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
-                proc.kill()
-
-            rc = proc.returncode if proc.returncode is not None else -1
-
-            if rc != 0:
-                # Error path
-                err_detail = "\n".join(stdout_lines[-5:]) if stdout_lines else "Update failed"
-                if len(err_detail) > 200:
-                    err_detail = err_detail[-200:]
-                yield _sse({
-                    "phase": "error",
-                    "pct": install_pct,
-                    "message": err_detail,
-                    "ok": False,
-                    "returncode": rc,
-                })
-                return
-
-            # Phase 3: verifying (80 → 95%)
-            yield _sse({"phase": "verifying", "pct": 85, "message": "Verifying installation…"})
-            await asyncio.sleep(0.4)
-            yield _sse({"phase": "verifying", "pct": 92, "message": "Checking package integrity…"})
-            await asyncio.sleep(0.3)
-
-            # Phase 4: done (100%)
-            yield _sse({
-                "phase": "done",
-                "pct": 100,
-                "message": "Update complete!",
-                "ok": True,
-            })
+            for ev in events:
+                ev_type = ev.get("type")
+                if ev_type == "log":
+                    text = ev.get("text", "")
+                    stdout_lines.append(text)
+                    lines_seen += 1
+                    if install_pct < 80:
+                        install_pct = min(80, 20 + lines_seen * 3)
+                    msg = text if text else "Installing…"
+                    if len(msg) > 80:
+                        msg = msg[:77] + "…"
+                    yield _sse({"phase": "installing", "pct": install_pct, "message": msg})
+                elif ev_type == "progress":
+                    pct = ev.get("percent", install_pct)
+                    msg = ev.get("detail", "Processing update…")
+                    yield _sse({"phase": "installing", "pct": pct, "message": msg})
+                elif ev_type == "done":
+                    if ev.get("ok"):
+                        yield _sse({"phase": "verifying", "pct": 85, "message": "Verifying installation…"})
+                        yield _sse({"phase": "done", "pct": 100, "message": "Update complete!", "ok": True})
+                    else:
+                        err_msg = ev.get("stderr") or ev.get("message") or "Update failed"
+                        yield _sse({"phase": "error", "pct": install_pct, "message": err_msg, "ok": False, "returncode": ev.get("returncode", -1)})
 
         except Exception as exc:
             yield _sse({
@@ -3194,6 +3151,7 @@ async def devtools_uninstall_app(req: UninstallRequest):
             operation="UNINSTALL",
             source="DEVTOOLS",
             timeout=120,
+            approved=True,
         )
         ok = outcome.success
         rc = outcome.return_code if outcome.return_code is not None else (0 if ok else -1)
@@ -3211,6 +3169,24 @@ async def devtools_uninstall_app(req: UninstallRequest):
             pass
         log_action("UNINSTALL", uninstall_cmd, f"Uninstalled {app.get('name', req.app_id)} via managed apps.")
 
+    # Post-uninstall Managed Footprint Residual Scan (Problem #35)
+    residuals_info = None
+    if ok:
+        try:
+            from managed_footprint import residual_scanner, cleanup_coordinator
+            scan_res = residual_scanner.scan_residuals(req.app_id)
+            preview = cleanup_coordinator.generate_preview(scan_res)
+            residuals_info = {
+                "scan_status": scan_res.scan_status.value,
+                "safe_count": scan_res.safe_count,
+                "review_count": scan_res.review_count,
+                "unowned_count": scan_res.unowned_count,
+                "summary": scan_res.summary,
+                "preview": preview.to_dict(),
+            }
+        except Exception as e:
+            logger.debug("Post-uninstall residual scan error: %s", e)
+
     return {
         "ok": ok,
         "app_id": req.app_id,
@@ -3218,6 +3194,59 @@ async def devtools_uninstall_app(req: UninstallRequest):
         "returncode": rc,
         "stdout": out_str[-500:] if out_str else "",
         "stderr": err_str[-500:] if err_str else "",
+        "residuals": residuals_info,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Problem #35 Residual Artifact Management Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/api/devtools/residuals/scan")
+async def devtools_residuals_scan(body: dict = Body(...)):
+    """
+    Scans host for residual installation, executable, service, or environment artifacts
+    associated with a tool (Problem #35). Pure inspection layer.
+    """
+    app_id = (body.get("app_id") or "").strip()
+    if not app_id:
+        raise HTTPException(status_code=400, detail="app_id is required")
+    from managed_footprint import residual_scanner
+    scan_res = residual_scanner.scan_residuals(app_id, installation_id=body.get("installation_id"))
+    return {"ok": True, "scan_result": scan_res.to_dict()}
+
+
+@router.post("/api/devtools/residuals/preview")
+async def devtools_residuals_preview(body: dict = Body(...)):
+    """
+    Generates a structured dry-run preview separating safe candidates, items requiring review,
+    and unowned/user-data items (Problem #35).
+    """
+    app_id = (body.get("app_id") or "").strip()
+    if not app_id:
+        raise HTTPException(status_code=400, detail="app_id is required")
+    from managed_footprint import residual_scanner, cleanup_coordinator
+    scan_res = residual_scanner.scan_residuals(app_id, installation_id=body.get("installation_id"))
+    preview = cleanup_coordinator.generate_preview(scan_res)
+    return {"ok": True, "preview": preview.to_dict()}
+
+
+@router.post("/api/devtools/residuals/cleanup")
+async def devtools_residuals_cleanup(body: dict = Body(...)):
+    """
+    Executes controlled cleanup of confirmed-owned residual artifacts through the
+    authoritative CentralizedExecutionEngine, enforcing approval, live safety gate, and verification.
+    """
+    app_id = (body.get("app_id") or "").strip()
+    approved = bool(body.get("approved", False))
+    if not app_id:
+        raise HTTPException(status_code=400, detail="app_id is required")
+    from managed_footprint import residual_scanner, cleanup_coordinator
+    scan_res = residual_scanner.scan_residuals(app_id, installation_id=body.get("installation_id"))
+    cleanup_res = cleanup_coordinator.execute_cleanup(scan_res, approved=approved)
+    return {
+        "ok": cleanup_res.status.value in ("CLEANUP_SUCCESS", "PARTIAL_CLEANUP"),
+        "result": cleanup_res.to_dict(),
     }
 
 
@@ -3440,6 +3469,19 @@ async def resolve_package(request: Request):
                 ),
             }
 
+        # Enrich with trusted source intelligence if candidate or query matches canonical identity
+        tsi_data = None
+        from canonical_identity import canonical_store
+        ident = canonical_store.get(query)
+        if ident:
+            from trusted_source_intelligence import trusted_source_engine
+            pm_ver = result.selected.version if result.selected else None
+            dec = trusted_source_engine.evaluate_tool(
+                canonical_id=ident.identity_id,
+                package_manager_version=pm_ver,
+            )
+            tsi_data = dec.to_dict()
+
         return {
             "ok":          True,
             "status":      result.status,
@@ -3449,10 +3491,88 @@ async def resolve_package(request: Request):
             "install_cmd": result.install_cmd,
             "selected":    _cand(result.selected) if result.selected else None,
             "candidates":  [_cand(c) for c in result.candidates],
+            "trusted_source_intel": tsi_data,
         }
     except Exception as exc:
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/api/devtools/trusted-source/check")
+async def check_trusted_source(request: Request):
+    """
+    Evaluates installed vs package manager vs trusted upstream release versions.
+    Pure intelligence layer; produces structured SourceDecisionResult.
+    """
+    body = await request.json()
+    canonical_id = (body.get("canonical_id") or "").strip()
+    if not canonical_id:
+        raise HTTPException(status_code=400, detail="'canonical_id' is required.")
+
+    installed_version = body.get("installed_version")
+    package_manager_version = body.get("package_manager_version")
+    channel = body.get("channel", "stable")
+    candidate_url = body.get("candidate_url")
+    force_refresh = bool(body.get("force_refresh", False))
+    is_linux_distro = bool(body.get("is_linux_distro_package", False))
+    distro_name = body.get("linux_distro_name", "")
+
+    try:
+        from trusted_source_intelligence import trusted_source_engine
+        decision = trusted_source_engine.evaluate_tool(
+            canonical_id=canonical_id,
+            installed_version=installed_version,
+            package_manager_version=package_manager_version,
+            channel=channel,
+            candidate_url=candidate_url,
+            force_refresh=force_refresh,
+            is_linux_distro_package=is_linux_distro,
+            linux_distro_name=distro_name,
+        )
+        return {
+            "ok": True,
+            "decision": decision.to_dict(),
+        }
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/api/devtools/trusted-source/validate-url")
+async def validate_official_url(request: Request):
+    """
+    Validates official/download URL against SSRF, local target abuse,
+    HTTPS downgrade, and canonical trusted domains.
+    """
+    body = await request.json()
+    url = (body.get("url") or "").strip()
+    canonical_id = (body.get("canonical_id") or "").strip()
+    follow_redirects = bool(body.get("follow_redirects", False))
+
+    if not url:
+        raise HTTPException(status_code=400, detail="'url' is required.")
+
+    from canonical_identity import canonical_store
+    ident = canonical_store.get(canonical_id) if canonical_id else None
+
+    try:
+        from trusted_source_intelligence import OfficialUrlValidator
+        is_valid, status, final_url, chain = OfficialUrlValidator.validate_url(
+            url=url,
+            identity=ident,
+            follow_redirects=follow_redirects,
+        )
+        return {
+            "ok": True,
+            "is_valid": is_valid,
+            "status": status.value,
+            "validated_url": final_url,
+            "redirect_chain": chain,
+        }
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 
 @router.post("/api/devtools/resolve/record-install")

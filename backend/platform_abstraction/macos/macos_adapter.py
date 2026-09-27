@@ -13,6 +13,10 @@ from platform_abstraction.macos.macos_environment import MacOSEnvironmentProvide
 from platform_abstraction.macos.macos_machine_state import MacOSMachineStateProvider
 from platform_abstraction.macos.macos_path import MacOSPathManager
 from platform_abstraction.macos.macos_service import MacOSServiceManager
+from platform_abstraction.macos.macos_source_awareness import (
+    MacOSSourceAwarenessProvider,
+    macos_source_awareness,
+)
 from platform_abstraction.macos.macos_verification import MacOSVerificationProvider
 from privilege_manager import PrivilegeManager
 
@@ -26,6 +30,10 @@ class MacOSPlatformAdapter(PlatformAdapter):
         self._service_manager = MacOSServiceManager()
         self._verification_provider = MacOSVerificationProvider(self._service_manager)
         self._machine_state_provider = MacOSMachineStateProvider()
+        self._source_awareness_provider = MacOSSourceAwarenessProvider(
+            env_provider=self._environment,
+            path_manager=self._path_manager,
+        )
 
     @property
     def platform_name(self) -> str:
@@ -54,4 +62,12 @@ class MacOSPlatformAdapter(PlatformAdapter):
     @property
     def machine_state_provider(self) -> MacOSMachineStateProvider:
         return self._machine_state_provider
+
+    @property
+    def source_awareness_provider(self) -> MacOSSourceAwarenessProvider:
+        return self._source_awareness_provider
+
+    @property
+    def source_awareness(self) -> MacOSSourceAwarenessProvider:
+        return self._source_awareness_provider
 

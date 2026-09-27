@@ -49,6 +49,15 @@ class ExecutionTier(str, Enum):
     TIER_3_ELEVATED_ADMIN = "TIER_3_FULL_PROTECTED"
     BLOCKED = "BLOCKED"
 
+    @property
+    def requires_approval(self) -> bool:
+        """Indicates whether execution requires explicit user authorization."""
+        return self in (
+            ExecutionTier.TIER_2_CONTROLLED,
+            ExecutionTier.TIER_3_FULL_PROTECTED,
+            ExecutionTier.TIER_3_ELEVATED_ADMIN,
+        )
+
 
 @dataclass
 class TierPolicyConfig:
@@ -155,31 +164,50 @@ def check_hard_safety_override(command_str: str) -> Optional[Tuple[ExecutionTier
 
 
 def compute_live_risk(
-    recipe: StructuredRecipe,
+    recipe: Optional[StructuredRecipe] = None,
     machine_state: Optional[Any] = None,
     requires_elevation: bool = False,
     data_impact: str = "LOW",          # "NONE", "LOW", "MEDIUM", "HIGH"
     rollback_difficulty: str = "EASY", # "TRIVIAL", "EASY", "MEDIUM", "HARD"
     policy: Optional[TierPolicyConfig] = None,
+    command: Optional[str] = None,
+    operation: Optional[RecipeOperation] = None,
+    risk_base: Optional[str] = None,
 ) -> float:
     """
     Computes dynamic risk score [0.0 - 1.0].
     Combines base risk + machine state signals + permissions + data impact + rollback difficulty.
+    Supports structured recipes or raw commands with explicit operation.
     """
     pol = policy or get_tier_policy()
 
     # 1. Base recipe risk
     base_map = {"Low": 0.15, "Medium": 0.45, "High": 0.75}
-    risk = base_map.get(recipe.risk_base, 0.40)
+    effective_op = operation
+    if recipe is not None:
+        risk = base_map.get(recipe.risk_base, 0.40)
+        effective_op = recipe.operation
+    else:
+        # For raw/unknown command without a recipe:
+        # Default to Medium (0.45) or use risk_base if supplied
+        r_base = risk_base or "Medium"
+        if command:
+            c_low = command.strip().lower()
+            if c_low.startswith("echo ") or c_low.endswith("--version") or c_low.endswith("-v") or c_low == "echo" or c_low.startswith("git config"):
+                r_base = "Low"
+                if c_low.startswith("git config"):
+                    data_impact = "NONE"
+                    rollback_difficulty = "TRIVIAL"
+        risk = base_map.get(r_base, 0.45)
 
     # 2. Operation type weighting
-    if recipe.operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
+    if effective_op in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
         return 0.05
-    elif recipe.operation == RecipeOperation.INSTALL:
+    elif effective_op == RecipeOperation.INSTALL:
         risk += 0.05
-    elif recipe.operation in (RecipeOperation.UPDATE, RecipeOperation.REPAIR):
+    elif effective_op in (RecipeOperation.UPDATE, RecipeOperation.REPAIR):
         risk += 0.10
-    elif recipe.operation in (RecipeOperation.UNINSTALL, RecipeOperation.REINSTALL):
+    elif effective_op in (RecipeOperation.UNINSTALL, RecipeOperation.REINSTALL, RecipeOperation.CLEANUP):
         risk += 0.20
 
     # 3. Elevation requirement
@@ -227,12 +255,14 @@ def compute_live_risk(
 
 
 def select_execution_tier(
-    recipe: StructuredRecipe,
+    recipe: Optional[StructuredRecipe] = None,
     trust_score: float = 0.9,       # 0.0 to 1.0 (Static DB recipes have 1.0, dynamic start at 0.5)
     risk_score: float = 0.2,        # 0.0 to 1.0
     confidence_score: float = 1.0,  # 0.0 to 1.0
     machine_state: Optional[Any] = None,
     policy: Optional[TierPolicyConfig] = None,
+    command: Optional[str] = None,
+    operation: Optional[RecipeOperation] = None,
 ) -> Tuple[ExecutionTier, str]:
     """
     Selects authoritative execution tier as a pure policy function of its inputs:
@@ -252,11 +282,12 @@ def select_execution_tier(
     pol = policy or get_tier_policy()
 
     # 1. Check for read-only operations
-    if recipe.operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
+    effective_op = recipe.operation if recipe else operation
+    if effective_op in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
         return ExecutionTier.TIER_0_READ_ONLY, "Read-only inspection operation."
 
     # 2. Hard Safety Overrides (Evaluated BEFORE normal scoring)
-    cmd_str = recipe.to_command_string()
+    cmd_str = recipe.to_command_string() if recipe else (command or "")
     override = check_hard_safety_override(cmd_str)
     if override is not None:
         return override

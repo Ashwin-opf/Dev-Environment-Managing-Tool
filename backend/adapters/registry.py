@@ -20,6 +20,8 @@ from .scoop import ScoopAdapter
 from .apt import AptAdapter
 from .dnf import DnfAdapter
 from .pacman import PacmanAdapter
+from .zypper import ZypperAdapter
+from .apk import ApkAdapter
 from .brew import BrewAdapter
 from .flatpak import FlatpakAdapter
 from .snap import SnapAdapter
@@ -35,6 +37,8 @@ ALL_ADAPTER_CLASSES: List[Type[BaseAdapter]] = [
     AptAdapter,
     DnfAdapter,
     PacmanAdapter,
+    ZypperAdapter,
+    ApkAdapter,
     BrewAdapter,
     FlatpakAdapter,
     SnapAdapter,
@@ -82,14 +86,14 @@ def get_active_adapter_names() -> List[str]:
 
 def get_system_adapter() -> Optional[BaseAdapter]:
     """
-    Return the primary OS-level adapter (winget on Windows, apt/dnf/pacman on Linux, brew on macOS).
+    Return the primary OS-level adapter (winget on Windows, apt/dnf/pacman/zypper/apk on Linux, brew on macOS).
     Preference order per OS matches typical system defaults.
     """
     os_name = platform.system()
     preference = {
         'Windows': ['winget', 'choco', 'scoop'],
         'Darwin':  ['brew'],
-        'Linux':   ['apt', 'dnf', 'pacman'],
+        'Linux':   ['apt', 'dnf', 'pacman', 'zypper', 'apk'],
     }.get(os_name, [])
 
     for pm_name in preference:

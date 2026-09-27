@@ -383,6 +383,34 @@ class DevToolsManager:
 
         self._apps[app_id] = record
         self._save()
+
+        # Register in ManagedFootprintRegistry for Problem #35
+        try:
+            from managed_footprint import footprint_registry, ManagedInstallation, OwnershipState
+            from canonical_identity import canonical_store
+            c_ident = canonical_store.resolve(app_id)
+            root = c_ident.installation_paths[0] if c_ident and c_ident.installation_paths else None
+            exes = [c_ident.expected_executable_path] if c_ident and c_ident.expected_executable_path else []
+            svcs = [c_ident.service_name] if c_ident and c_ident.service_name else []
+            env_entries = list(c_ident.required_path_dirs) if c_ident else []
+            footprint_registry.register_installation(ManagedInstallation(
+                canonical_id=app_id,
+                installation_id=f"inst_{app_id}_{int(datetime.now(timezone.utc).timestamp())}",
+                source="DEVTOOLS",
+                package_manager=package_manager,
+                package_id=pkg or app_id,
+                version=tool_info.get("version", "latest"),
+                scope=tool_info.get("scope", "machine"),
+                ownership_state=OwnershipState.PC_DOCTOR_MANAGED,
+                installation_root=root,
+                executables=exes,
+                services=svcs,
+                environment_entries=env_entries,
+                installed_at=now,
+            ))
+        except Exception:
+            pass
+
         return record
 
     def get_management_commands(self, app_id: str) -> dict:
@@ -420,6 +448,11 @@ class DevToolsManager:
         if app_id in self._apps:
             del self._apps[app_id]
             self._save()
+            try:
+                from managed_footprint import footprint_registry
+                footprint_registry.record_uninstall(app_id)
+            except Exception:
+                pass
             return True
         return False
 

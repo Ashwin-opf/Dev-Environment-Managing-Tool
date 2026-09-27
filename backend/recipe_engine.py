@@ -32,6 +32,7 @@ class RecipeOperation(str, Enum):
     VERSION_CHECK = "VERSION_CHECK"
     VERIFY = "VERIFY"
     REPAIR = "REPAIR"
+    CLEANUP = "CLEANUP"
 
 
 class RepairStrategy(str, Enum):
@@ -361,27 +362,74 @@ class RecipeResolver:
                 executable = identity.version_command[0] if identity.version_command else identity.executable
                 arguments = identity.version_command[1:] if len(identity.version_command) > 1 else ["--version"]
         else:
-            # Linux / apt standard
-            if operation == RecipeOperation.INSTALL:
-                executable = "sudo"
-                arguments = ["apt-get", "install", "-y", pkg_id]
-            elif operation == RecipeOperation.UPDATE:
-                executable = "sudo"
-                arguments = ["apt-get", "install", "--only-upgrade", "-y", pkg_id]
-            elif operation == RecipeOperation.UNINSTALL:
-                executable = "sudo"
-                arguments = ["apt-get", "remove", "-y", pkg_id]
-            elif operation == RecipeOperation.REINSTALL:
-                executable = "sudo"
-                arguments = ["apt-get", "install", "--reinstall", "-y", pkg_id]
-                repair_strategy = RepairStrategy.REINSTALL
-            elif operation == RecipeOperation.REPAIR:
-                executable = "sudo"
-                arguments = ["apt-get", "install", "--reinstall", "-y", pkg_id]
-                repair_strategy = RepairStrategy.REINSTALL
-            elif operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
-                executable = identity.version_command[0] if identity.version_command else identity.executable
-                arguments = identity.version_command[1:] if len(identity.version_command) > 1 else ["--version"]
+            # Linux package managers
+            executable = "sudo"
+            if pm == "dnf":
+                if operation == RecipeOperation.INSTALL:
+                    arguments = ["dnf", "install", "-y", pkg_id]
+                elif operation == RecipeOperation.UPDATE:
+                    arguments = ["dnf", "upgrade", "-y", pkg_id]
+                elif operation == RecipeOperation.UNINSTALL:
+                    arguments = ["dnf", "remove", "-y", pkg_id]
+                elif operation in (RecipeOperation.REINSTALL, RecipeOperation.REPAIR):
+                    arguments = ["dnf", "reinstall", "-y", pkg_id]
+                    repair_strategy = RepairStrategy.REINSTALL
+                elif operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
+                    executable = identity.version_command[0] if identity.version_command else identity.executable
+                    arguments = identity.version_command[1:] if len(identity.version_command) > 1 else ["--version"]
+            elif pm == "pacman":
+                if operation == RecipeOperation.INSTALL:
+                    arguments = ["pacman", "-S", "--noconfirm", pkg_id]
+                elif operation == RecipeOperation.UPDATE:
+                    arguments = ["pacman", "-S", "--noconfirm", pkg_id]
+                elif operation == RecipeOperation.UNINSTALL:
+                    arguments = ["pacman", "-Rns", "--noconfirm", pkg_id]
+                elif operation in (RecipeOperation.REINSTALL, RecipeOperation.REPAIR):
+                    arguments = ["pacman", "-S", "--noconfirm", pkg_id]
+                    repair_strategy = RepairStrategy.REINSTALL
+                elif operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
+                    executable = identity.version_command[0] if identity.version_command else identity.executable
+                    arguments = identity.version_command[1:] if len(identity.version_command) > 1 else ["--version"]
+            elif pm == "zypper":
+                if operation == RecipeOperation.INSTALL:
+                    arguments = ["zypper", "--non-interactive", "install", "-y", pkg_id]
+                elif operation == RecipeOperation.UPDATE:
+                    arguments = ["zypper", "--non-interactive", "update", "-y", pkg_id]
+                elif operation == RecipeOperation.UNINSTALL:
+                    arguments = ["zypper", "--non-interactive", "remove", "-y", pkg_id]
+                elif operation in (RecipeOperation.REINSTALL, RecipeOperation.REPAIR):
+                    arguments = ["zypper", "--non-interactive", "install", "--force", "-y", pkg_id]
+                    repair_strategy = RepairStrategy.REINSTALL
+                elif operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
+                    executable = identity.version_command[0] if identity.version_command else identity.executable
+                    arguments = identity.version_command[1:] if len(identity.version_command) > 1 else ["--version"]
+            elif pm == "apk":
+                if operation == RecipeOperation.INSTALL:
+                    arguments = ["apk", "add", "--no-cache", pkg_id]
+                elif operation == RecipeOperation.UPDATE:
+                    arguments = ["apk", "upgrade", pkg_id]
+                elif operation == RecipeOperation.UNINSTALL:
+                    arguments = ["apk", "del", pkg_id]
+                elif operation in (RecipeOperation.REINSTALL, RecipeOperation.REPAIR):
+                    arguments = ["apk", "add", "--no-cache", "--force-refresh", pkg_id]
+                    repair_strategy = RepairStrategy.REINSTALL
+                elif operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
+                    executable = identity.version_command[0] if identity.version_command else identity.executable
+                    arguments = identity.version_command[1:] if len(identity.version_command) > 1 else ["--version"]
+            else:
+                # Default Linux (APT)
+                if operation == RecipeOperation.INSTALL:
+                    arguments = ["apt-get", "install", "-y", pkg_id]
+                elif operation == RecipeOperation.UPDATE:
+                    arguments = ["apt-get", "install", "--only-upgrade", "-y", pkg_id]
+                elif operation == RecipeOperation.UNINSTALL:
+                    arguments = ["apt-get", "remove", "-y", pkg_id]
+                elif operation in (RecipeOperation.REINSTALL, RecipeOperation.REPAIR):
+                    arguments = ["apt-get", "install", "--reinstall", "-y", pkg_id]
+                    repair_strategy = RepairStrategy.REINSTALL
+                elif operation in (RecipeOperation.VERSION_CHECK, RecipeOperation.VERIFY):
+                    executable = identity.version_command[0] if identity.version_command else identity.executable
+                    arguments = identity.version_command[1:] if len(identity.version_command) > 1 else ["--version"]
 
         return StructuredRecipe(
             recipe_id=f"syn_{identity.identity_id}_{operation.value.lower()}",

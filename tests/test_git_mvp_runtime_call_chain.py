@@ -247,7 +247,8 @@ class TestGitMVPRuntimeCallChain(unittest.TestCase):
 
         try:
             # Apply instrumentation across authoritative pipeline
-            with patch("execution_engine.select_execution_tier", side_effect=traced_tier_select), \
+            with patch("execution_plan.select_execution_tier", side_effect=traced_tier_select), \
+                 patch("execution_tier.select_execution_tier", side_effect=traced_tier_select), \
                  patch.object(privilege_manager, "resolve_privilege", side_effect=traced_resolve_privilege), \
                  patch.object(authoritative_safety, "live_pre_execution_gate", side_effect=traced_safety_gate), \
                  patch.object(privilege_manager, "stream_elevated_operation", side_effect=traced_mutation_stream), \

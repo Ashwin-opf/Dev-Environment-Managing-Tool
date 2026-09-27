@@ -1,22 +1,40 @@
-# PC Doctor dependencies and generated files
+# PC Doctor - Comprehensive .gitignore for production release
 
-# Node
+# Node & Frontend dependencies and build artifacts
 node_modules/
 frontend/node_modules/
+dist/
+build/
+frontend/dist/
+.next/
+.cache/
 test-results/
 playwright-report/
 
-# Python
+# Python virtual environments & bytecode
+.venv/
 backend/.venv/
+venv/
+env/
 **/__pycache__/
-**/*.pyc
-**/*.pyo
-backend/pc_doctor.log
-backend/elevation_diag.log
+**/*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Testing & Coverage
 .pytest_cache/
 backend/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+nosetests.xml
+coverage.xml
 
-# SQLite runtime and ephemeral files
+# SQLite runtime, journals, and machine-specific DB caches
 *.db-wal
 *.db-shm
 *.db-journal
@@ -32,35 +50,55 @@ backend/devtools_managed_apps.json
 backend/test_lab_baselines.json
 backend/test_lab_results.json
 
-# Config overrides
+# Logs
+*.log
+logs/
+backend/pc_doctor.log
+backend/elevation_diag.log
+
+# Config overrides & secrets
 config/settings.local.json
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+secrets/
+credentials/
+.pc_doctor_ai_config/
 
 # Rust / Tauri build artifacts (OS-specific — never commit these)
-frontend/target/
+target/
 src-tauri/target/
+frontend/target/
 
 # Chrome / browser profile data (auto-generated)
 .pc-doctor-profile/
 
-# Scratch / temporary dev files
+# Scratch & temporary dev files
 scratch/*
 !scratch/cross_platform_live_validation.py
 *.zip
+*.tar
+*.tar.gz
+*.7z
+.tmp/
+temp/
+
+# IDE & Editor files
+.idea/
+.vscode/
+.kiro/
+*.swp
+*~
+*.bak
 
 # OS junk
 .DS_Store
 Thumbs.db
 Desktop.ini
-*.swp
-*~
-
-# Secrets & Environment variables
-.env
-.env.*
-.env.local
-.pc_doctor_ai_config/
 
 # Database corruption backups
 *.corrupt.*
 *.corrupt
-

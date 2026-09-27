@@ -267,6 +267,7 @@ class AuthoritativeVerificationEngine:
         original_problem: Optional[str] = None,
         timeout: int = 8,
         attempt: int = 1,
+        operation: Optional[str] = None,
     ) -> VerificationResult:
         # Refresh environment on every probe to ensure newly installed PATH/files are visible
         refresh_ok, eff_env, refresh_err = _refresh_verification_environment()
@@ -289,7 +290,21 @@ class AuthoritativeVerificationEngine:
                     found_path = p
                     break
 
+        op_str = (operation or (recipe.operation.value if recipe and hasattr(recipe, "operation") and hasattr(recipe.operation, "value") else "")).upper()
         if not found_path:
+            if op_str == "UNINSTALL":
+                return VerificationResult(
+                    status=VerificationStatus.VERIFIED,
+                    level=level,
+                    executable_found=False,
+                    version_detected=None,
+                    functional_check_passed=True,
+                    problem_cleared=True,
+                    timed_out=False,
+                    attempts=attempt,
+                    message=f"Verified: '{exec_name}' successfully uninstalled (not found on PATH).",
+                    details={"target": target_name_or_id, "executable": exec_name, "effective_path": effective_path},
+                )
             return VerificationResult(
                 status=VerificationStatus.VERIFICATION_FAILED,
                 level=level,
@@ -301,6 +316,20 @@ class AuthoritativeVerificationEngine:
                 attempts=attempt,
                 message=f"Binary '{exec_name}' not found on PATH or known install locations.",
                 details={"target": target_name_or_id, "executable": exec_name, "effective_path": effective_path},
+            )
+
+        if op_str == "UNINSTALL":
+            return VerificationResult(
+                status=VerificationStatus.VERIFICATION_FAILED,
+                level=level,
+                executable_found=True,
+                version_detected=None,
+                functional_check_passed=False,
+                problem_cleared=False,
+                timed_out=False,
+                attempts=attempt,
+                message=f"Uninstall verification failed: '{exec_name}' still found at '{found_path}'.",
+                details={"target": target_name_or_id, "executable": exec_name, "path": found_path},
             )
 
         # Shadowing Detection: verify first match on PATH matches expected binary
@@ -490,6 +519,7 @@ class AuthoritativeVerificationEngine:
         original_problem: Optional[str] = None,
         policy: Optional[VerificationPolicy] = None,
         on_attempt: Optional[Any] = None,
+        operation: Optional[str] = None,
     ) -> VerificationResult:
         """
         Executes bounded verification retry loop on transient timeouts.
@@ -515,6 +545,7 @@ class AuthoritativeVerificationEngine:
                 original_problem=original_problem,
                 timeout=active_policy.probe_timeout,
                 attempt=attempt,
+                operation=operation,
             )
             result.attempts = attempt
             last_result = result

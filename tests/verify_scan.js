@@ -1,7 +1,9 @@
 const { chromium } = require('playwright-core');
 const path = require('path');
+const fs = require('fs');
 
-const ARTIFACT_DIR = 'C:/Users/srira/.gemini/antigravity-ide/brain/e0ad5b85-367c-48d6-983d-020c0a0886e0';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(__dirname, '..', 'test-results');
+if (!fs.existsSync(ARTIFACT_DIR)) fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
 (async () => {
   const browser = await chromium.launch({

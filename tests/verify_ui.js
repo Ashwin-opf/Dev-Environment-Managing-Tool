@@ -1,4 +1,9 @@
 const { chromium } = require('playwright-core');
+const path = require('path');
+const fs = require('fs');
+
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(__dirname, '..', 'test-results');
+if (!fs.existsSync(ARTIFACT_DIR)) fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
 (async () => {
   const browser = await chromium.launch({
@@ -11,7 +16,7 @@ const { chromium } = require('playwright-core');
   await page.waitForTimeout(1000);
 
   // 1. Dark Theme Dashboard
-  await page.screenshot({ path: 'C:/Users/srira/.gemini/antigravity-ide/brain/e0ad5b85-367c-48d6-983d-020c0a0886e0/screenshot_dark_dashboard.png' });
+  await page.screenshot({ path: path.join(ARTIFACT_DIR, 'screenshot_dark_dashboard.png') });
 
   // 2. Open Tool Modal on DevTools
   await page.click('#btn-nav-devtools');
@@ -19,7 +24,7 @@ const { chromium } = require('playwright-core');
   const toolCard = await page.waitForSelector('.tool-card');
   await toolCard.click();
   await page.waitForTimeout(400);
-  await page.screenshot({ path: 'C:/Users/srira/.gemini/antigravity-ide/brain/e0ad5b85-367c-48d6-983d-020c0a0886e0/screenshot_tool_modal.png' });
+  await page.screenshot({ path: path.join(ARTIFACT_DIR, 'screenshot_tool_modal.png') });
   await page.click('button:has-text("Done")');
   await page.waitForTimeout(400);
 
@@ -30,12 +35,12 @@ const { chromium } = require('playwright-core');
   // 4. View My Apps in Light Mode
   await page.click('#btn-nav-myapps');
   await page.waitForTimeout(1000);
-  await page.screenshot({ path: 'C:/Users/srira/.gemini/antigravity-ide/brain/e0ad5b85-367c-48d6-983d-020c0a0886e0/test_screenshot.png' });
+  await page.screenshot({ path: path.join(ARTIFACT_DIR, 'test_screenshot.png') });
 
   // 5. View Repair Tab with Dynamic KB pending banner in Light Mode
   await page.click('#btn-nav-repair');
   await page.waitForTimeout(800);
-  await page.screenshot({ path: 'C:/Users/srira/.gemini/antigravity-ide/brain/e0ad5b85-367c-48d6-983d-020c0a0886e0/screenshot_repair_tab.png' });
+  await page.screenshot({ path: path.join(ARTIFACT_DIR, 'screenshot_repair_tab.png') });
 
   console.log('PLAYWRIGHT TESTS COMPLETED SUCCESSFULLY');
   await browser.close();

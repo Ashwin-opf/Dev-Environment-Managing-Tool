@@ -13,7 +13,7 @@ import socket
 import time
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 
 # Cross-platform subprocess wrapper – always decodes output as UTF-8.
@@ -756,11 +756,19 @@ class RepairEngine:
         payload: Optional[dict] = None,
         scope: Optional[str] = None,
         title: Optional[str] = None,
+        source: Optional[str] = None,
+        approved: Optional[bool] = None,
+        **kwargs: Any,
     ) -> tuple[str, str, int]:
         """Execute a shell command via the authoritative execution pipeline, returning (stdout, stderr, returncode)."""
         clean_cmd = (command or "").strip()
         if not clean_cmd or clean_cmd.startswith("#"):
             return "", "Execution rejected: command is empty or a comment.", 1
+
+        eff_approved = approved if approved is not None else (bool(payload.get("approved")) if (payload and "approved" in payload) else True)
+        eff_source = source or (payload.get("source") if payload else "STATIC_DB")
+        eff_scope = scope or (payload.get("scope") if payload else None)
+        eff_title = title or (payload.get("application") or payload.get("title") if payload else None)
 
         # Preserve compatibility for tests that patch run_elevated_operation on engine instance
         if elevate or "sudo" in clean_cmd.lower() or "pkexec" in clean_cmd.lower():
@@ -774,11 +782,11 @@ class RepairEngine:
                     op = "REPAIR_PATH" if target_dir else "EXECUTE_COMMAND"
                     payload = {
                         "operation": op,
-                        "scope": scope or "USER",
+                        "scope": eff_scope or "USER",
                         "directory": target_dir,
                         "command": clean_cmd,
-                        "application": title or "System Tool",
-                        "source": "STATIC_DB",
+                        "application": eff_title or "System Tool",
+                        "source": eff_source or "STATIC_DB",
                     }
                 res = self.run_elevated_operation(payload)
                 if res.get("status") == "USER_DECLINED_ELEVATION":
@@ -789,9 +797,11 @@ class RepairEngine:
         outcome = execution_engine.execute_command(
             command=clean_cmd,
             elevate=elevate or ("sudo" in clean_cmd.lower()),
-            scope=scope,
-            title=title,
+            scope=eff_scope,
+            title=eff_title,
             trigger_shce=trigger_shce,
+            source=eff_source,
+            approved=eff_approved,
         )
 
         if outcome.status == "USER_DECLINED_ELEVATION" or outcome.return_code == 1223:
@@ -810,6 +820,9 @@ class RepairEngine:
         payload: Optional[dict] = None,
         scope: Optional[str] = None,
         title: Optional[str] = None,
+        source: Optional[str] = None,
+        approved: Optional[bool] = None,
+        **kwargs: Any,
     ):
         """
         Execute a command through the authoritative execution pipeline and yield real-time output events as a generator.
@@ -967,14 +980,21 @@ class RepairEngine:
                     }
                 return
 
+        eff_approved = approved if approved is not None else (bool(payload.get("approved")) if (payload and "approved" in payload) else True)
+        eff_source = source or (payload.get("source") if payload else "STATIC_DB")
+        eff_scope = scope or (payload.get("scope") if payload else None)
+        eff_title = title or (payload.get("application") or payload.get("title") if payload else None)
+
         from execution_engine import execution_engine
         yield from execution_engine.stream_execute_command(
             command=clean_cmd,
             elevate=elevate or ("sudo" in clean_cmd.lower()),
-            scope=scope,
-            title=title,
+            scope=eff_scope,
+            title=eff_title,
             timeout=timeout,
             trigger_shce=trigger_shce,
+            source=eff_source,
+            approved=eff_approved,
         )
 
 

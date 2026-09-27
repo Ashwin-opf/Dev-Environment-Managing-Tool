@@ -443,7 +443,7 @@ class TestTenMandatoryScenarios(unittest.TestCase):
             "Git is installed, but its PATH entry is missing. Administrator permission is required to repair the system PATH.",
             "MySQL Server is installed, but its PATH entry is missing. Administrator permission is required to repair the system PATH.",
             "Google Chrome is installed, but its PATH entry is missing. Administrator permission is required to repair the system PATH.",
-            r"Multiple Python versions detected. C:\Users\srira\AppData\Local\Programs\Python\Python312\python.EXE is currently active. Review PATH precedence before changing it.",
+            r"Multiple Python versions detected. C:\Users\testuser\AppData\Local\Programs\Python\Python312\python.EXE is currently active. Review PATH precedence before changing it.",
             "Review PATH precedence before changing it.",
         ]
 

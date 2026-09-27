@@ -141,7 +141,7 @@ class AgentOrchestrator:
         """snapshot.revert(id) → revert plan"""
         return snapshot_engine.revert(snapshot_id)
 
-    def tool_executor_run(self, command: str, timeout: int = 120) -> Dict[str, Any]:
+    def tool_executor_run(self, command: str, timeout: int = 120, approved: bool = False) -> Dict[str, Any]:
         """executor.run(command) → result, exit state via CentralizedExecutionEngine"""
         from execution_engine import execution_engine
         start = time.time()
@@ -151,6 +151,7 @@ class AgentOrchestrator:
                 operation="EXECUTE",
                 source="AGENT",
                 timeout=timeout,
+                approved=approved,
             )
             return {
                 "success": outcome.success,

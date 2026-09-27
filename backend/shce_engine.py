@@ -2449,6 +2449,7 @@ class SHCEOrchestrator:
                 operation="REPAIR",
                 source="SHCE",
                 trigger_shce=False,
+                approved=True,
             )
             stdout = outcome.stdout or ""
             stderr = outcome.stderr or outcome.message or ""
@@ -2532,7 +2533,7 @@ class SHCEOrchestrator:
         full_stdout = ""
         full_stderr = ""
         rc = 0
-        for event in execution_engine.stream_execute_command(command, operation="REPAIR", source="SHCE", trigger_shce=False):
+        for event in execution_engine.stream_execute_command(command, operation="REPAIR", source="SHCE", trigger_shce=False, approved=True):
             if event.get("type") == "done":
                 full_stdout = event.get("stdout", "")
                 full_stderr = event.get("stderr", "")
