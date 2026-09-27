@@ -216,8 +216,8 @@ Zero historical reports were rewritten.
 ## 8. Git Baseline Reconciliation
 
 - **Pre-Fix Git Commit Baseline**: `cead0a1a69e7eb722983d6188e8ab38aa8461c2a`
-- **Post-Fix Git Commit Baseline**: Recorded upon working tree commit during finalization.
-- The post-fix commit represents the verified engineering baseline for the repository.
+- **Post-Fix Git Commit Baseline**: `24d3f489e356ec128c65d5f14b655c6748d5bc80` (Short: `24d3f48`)
+- The post-fix commit represents the verified engineering baseline for the eventual team handoff.
 
 ---
 
@@ -231,6 +231,12 @@ Zero historical reports were rewritten.
 ### 9.2 Targeted Production Script Execution
 - `scratch/test_postfix_rq5_live.py`: **6 / 6 passed** (100%)
 - `scratch/test_windows_native_live.py`: **8 / 8 passed** (100%)
+
+### 9.3 Full Workspace Regression Suite
+- **Collected**: 715 items
+- **Passed**: 713 items (100% pass rate)
+- **Failed**: 0 items
+- **Skipped**: 2 items (conditional platform skips on Windows host)
 
 ---
 
