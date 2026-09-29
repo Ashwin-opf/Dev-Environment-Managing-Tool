@@ -64,23 +64,23 @@ if (isWin) {
         process.env.PATH = [rustSelfContained, machinePath, userPath, process.env.PATH].filter(Boolean).join(';');
     } catch (_) {}
 
-    // Kill any lingering processes on ports 5173/8765 or python/uvicorn
+    // Kill any lingering processes on ports 5173/8765/8790 or python/uvicorn
     try {
         const { execSync } = require('child_process');
         const selfPid = process.pid;
-        execSync(`powershell -Command "Get-NetTCPConnection -LocalPort 5173,8765 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Get-Process -Name python, uvicorn -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"`, { stdio: 'ignore' });
+        execSync(`powershell -Command "Get-NetTCPConnection -LocalPort 5173,8765,8790 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Get-Process -Name python, uvicorn -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"`, { stdio: 'ignore' });
     } catch (_) {}
 }
 
 // Clear Vite cache and force frontend build sync
 try {
     const { execSync } = require('child_process');
-    const viteCache = path.join(ROOT_DIR, 'frontend', 'node_modules', '.vite');
+    const viteCache = path.join(ROOT_DIR, 'node_modules', '.vite');
     if (fs.existsSync(viteCache)) {
         fs.rmSync(viteCache, { recursive: true, force: true });
     }
     info('Syncing and building frontend assets for desktop app...');
-    execSync('npm --prefix frontend run build', { stdio: 'inherit' });
+    execSync('npx vite build devtools-control-center/frontend', { stdio: 'inherit' });
 } catch (e) {
     warn('Frontend sync warning: ' + e.message);
 }
@@ -115,11 +115,22 @@ function launchProcess(label, cmd, args, opts = {}) {
 }
 
 // ── Launch Python backend ───────────────────────────────────────────────────
+const devtoolsBackendDir = path.join(ROOT_DIR, 'devtools-control-center', 'backend');
 launchProcess(
-    'Python backend  (http://127.0.0.1:8765)',
+    'DevEngine Backend  (http://127.0.0.1:8790)',
     VENV_PYTHON,
-    [path.join(BACKEND_DIR, 'main.py')],
-    { cwd: BACKEND_DIR }
+    [path.join(devtoolsBackendDir, 'main.py')],
+    { cwd: devtoolsBackendDir }
+);
+
+// ── Launch Vite frontend dev server ─────────────────────────────────────────
+const viteCli = path.join(ROOT_DIR, 'frontend', 'node_modules', 'vite', 'bin', 'vite.js');
+const devtoolsFrontendDir = path.join(ROOT_DIR, 'devtools-control-center', 'frontend');
+launchProcess(
+    'Frontend dev server  (http://localhost:5173)',
+    process.execPath,
+    [viteCli, devtoolsFrontendDir, '--port', '5173', '--strictPort'],
+    { cwd: ROOT_DIR }
 );
 
 // ── Dynamic 100% Platform-Independent Browser / App Window Finder ───────────

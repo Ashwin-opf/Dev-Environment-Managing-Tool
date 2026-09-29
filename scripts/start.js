@@ -42,19 +42,19 @@ console.log('');
 try {
     const { execSync } = require('child_process');
     if (isWin) {
-        execSync('powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5173,8765 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"', { stdio: 'ignore' });
+        execSync('powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5173,8765,8790 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"', { stdio: 'ignore' });
     } else {
-        execSync('fuser -k 5173/tcp 8765/tcp 2>/dev/null || true', { stdio: 'ignore' });
+        execSync('fuser -k 5173/tcp 8765/tcp 8790/tcp 2>/dev/null || true', { stdio: 'ignore' });
     }
 } catch (_) {}
 
 // Quick pre-check: ensure dist exists
-const distDir = path.join(ROOT_DIR, 'frontend', 'dist');
+const distDir = path.join(ROOT_DIR, 'devtools-control-center', 'frontend', 'dist');
 if (!fs.existsSync(distDir)) {
     try {
         const { execSync } = require('child_process');
         info('Building frontend assets...');
-        execSync('npm --prefix frontend run build', { stdio: 'ignore' });
+        execSync('npx vite build devtools-control-center/frontend', { stdio: 'ignore' });
     } catch (_) {}
 }
 
@@ -86,8 +86,8 @@ function launchProcess(label, cmd, args, opts = {}) {
 
 // ── File watcher for frontend live auto-build & auto-update ─────────────────
 let buildTimeout = null;
-const frontendDir = path.join(ROOT_DIR, 'frontend');
-const WATCH_FILES = new Set(['main.js', 'style.css', 'index.html', 'animations.js']);
+const frontendDir = path.join(ROOT_DIR, 'devtools-control-center', 'frontend');
+const WATCH_FILES = new Set(['main.js', 'style.css', 'index.html']);
 try {
     fs.watch(frontendDir, { recursive: false }, (eventType, filename) => {
         if (!filename || !WATCH_FILES.has(filename)) return;
@@ -95,8 +95,8 @@ try {
         buildTimeout = setTimeout(() => {
             try {
                 const { execSync } = require('child_process');
-                execSync('npm --prefix frontend run build', { stdio: 'ignore' });
-                info(`[Auto-Update] Built changes in frontend/${filename}`);
+                execSync('npx vite build devtools-control-center/frontend', { stdio: 'ignore' });
+                info(`[Auto-Update] Built changes in devtools-control-center/frontend/${filename}`);
             } catch (_) {}
         }, 300);
     });
@@ -104,25 +104,27 @@ try {
 } catch (_) {}
 
 // ── Launch Python backend ───────────────────────────────────────────────────
+const devtoolsBackendDir = path.join(ROOT_DIR, 'devtools-control-center', 'backend');
 launchProcess(
-    'Python backend  (http://127.0.0.1:8765)',
+    'DevEngine Backend  (http://127.0.0.1:8790)',
     VENV_PYTHON,
-    [path.join(BACKEND_DIR, 'main.py')],
-    { cwd: BACKEND_DIR }
+    [path.join(devtoolsBackendDir, 'main.py')],
+    { cwd: devtoolsBackendDir }
 );
 
 // ── Launch Vite frontend dev server ─────────────────────────────────────────
 const viteCli = path.join(ROOT_DIR, 'frontend', 'node_modules', 'vite', 'bin', 'vite.js');
+const devtoolsFrontendDir = path.join(ROOT_DIR, 'devtools-control-center', 'frontend');
 launchProcess(
     'Frontend dev server  (http://localhost:5173)',
     process.execPath,
-    [viteCli, '--port', '5173', '--strictPort'],
-    { cwd: path.join(ROOT_DIR, 'frontend') }
+    [viteCli, devtoolsFrontendDir, '--port', '5173', '--strictPort'],
+    { cwd: ROOT_DIR }
 );
 
 console.log('');
 info('Both backend and frontend services are active with auto-update enabled.');
-info('Launching PC Doctor Desktop App Window...');
+info('Launching DevEngine Desktop App Window...');
 info('Press Ctrl+C to stop servers when done.');
 console.log('');
 

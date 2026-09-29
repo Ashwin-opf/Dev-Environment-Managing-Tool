@@ -57,12 +57,9 @@ jobs:
         shell: pwsh
         run: |
           npm install
-          Set-Location frontend
-          npm install
-          npm run build
-          Set-Location ..
-          if (Test-Path "frontend/dist/index.html") {
-            Write-Host "Frontend build verified at frontend/dist"
+          npx vite build devtools-control-center/frontend
+          if (Test-Path "devtools-control-center/frontend/dist/index.html") {
+            Write-Host "Frontend build verified at devtools-control-center/frontend/dist"
           } else {
             Write-Error "Frontend build missing index.html"
             exit 1
@@ -187,11 +184,8 @@ jobs:
       - name: Install Node Dependencies & Build Frontend
         run: |
           npm install
-          cd frontend
-          npm install
-          npm run build
-          cd ..
-          test -d frontend/dist && echo "Frontend build verified at frontend/dist"
+          npx vite build devtools-control-center/frontend
+          test -d devtools-control-center/frontend/dist && echo "Frontend build verified at devtools-control-center/frontend/dist"
 
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -293,11 +287,8 @@ jobs:
       - name: Install Node Dependencies & Build Frontend
         run: |
           npm install
-          cd frontend
-          npm install
-          npm run build
-          cd ..
-          test -d frontend/dist && echo "Frontend build verified at frontend/dist"
+          npx vite build devtools-control-center/frontend
+          test -d devtools-control-center/frontend/dist && echo "Frontend build verified at devtools-control-center/frontend/dist"
 
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable

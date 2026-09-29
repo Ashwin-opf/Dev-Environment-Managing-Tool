@@ -74,21 +74,17 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          cd frontend
           npm install
-          npm run build
-          cd ..
-          test -d frontend/dist && echo "Frontend build verified at frontend/dist"
+          npx vite build devtools-control-center/frontend
+          test -d devtools-control-center/frontend/dist && echo "Frontend build verified at devtools-control-center/frontend/dist"
 
       - name: Frontend Build (Production Bundle) (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Set-Location frontend
           npm install
-          npm run build
-          Set-Location ..
-          if (Test-Path "frontend/dist") { Write-Host "Frontend build verified at frontend/dist" }
+          npx vite build devtools-control-center/frontend
+          if (Test-Path "devtools-control-center/frontend/dist") { Write-Host "Frontend build verified at devtools-control-center/frontend/dist" }
 
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
