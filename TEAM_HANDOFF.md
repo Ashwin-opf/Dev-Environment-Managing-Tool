@@ -267,7 +267,7 @@ Phase 15.5 introduces pre-compiled, self-contained desktop distribution packages
 
 #### Distribution Readiness
 * **Status:** `READY FOR INTERNAL / TEAM DISTRIBUTION AND CROSS-PLATFORM CI VALIDATION`
-* **Production Public Release Pre-requisite:** Public production distribution will additionally require platform-specific code signing and notarization (Microsoft Authenticode EV certificate for Windows SmartScreen, Apple Developer ID with notary service stapling for macOS Gatekeeper, and GPG repository signing for Linux packages).
+* **Production Public Release Pre-requisite:** Public production distribution will additionally require platform-specific code signing and notarization. Windows public distribution should use a valid Authenticode certificate; SmartScreen reputation and warning behavior are controlled by Microsoft’s trust and reputation systems and are not guaranteed solely by signing. macOS distribution requires an Apple Developer ID certificate with notary service ticket stapling (`xcrun notarytool`), and Linux repository distributions require GPG signing.
 
 ---
 

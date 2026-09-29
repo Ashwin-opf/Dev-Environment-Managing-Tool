@@ -203,6 +203,6 @@ python scratch/run_phase15_5_packaging_validation.py
 # Trigger .github/workflows/build-distributions.yml on GitHub
 ```
 
-*Distribution Readiness: Ready for internal / team distribution and cross-platform CI validation. Production public release will additionally require platform-specific code signing (Authenticode EV) and notarization (Apple Developer ID).*
+*Distribution Readiness: Ready for internal / team distribution and cross-platform CI validation. Production public release will additionally require platform-specific code signing and notarization. Windows public distribution should use a valid Authenticode certificate; SmartScreen reputation and warning behavior are controlled by Microsoft’s trust and reputation systems and are not guaranteed solely by signing. macOS distribution requires an Apple Developer ID with notary service stapling, and Linux repository packages require GPG signing.*
 
 

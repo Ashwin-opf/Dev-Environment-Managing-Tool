@@ -264,6 +264,6 @@ Phase 15.5 establishes the packaging architecture, standalone backend bundling, 
 > [!IMPORTANT]
 > **Production Public Release Pre-requisite:**
 > This status reflects verified internal, team-level distribution and CI automation. A public production release will additionally require platform-specific code signing and notarization:
-> 1. **Windows:** Microsoft Authenticode certificate (EV recommended) to establish immediate SmartScreen reputation without user security prompts.
+> 1. **Windows:** Windows public distribution should use a valid Authenticode certificate; SmartScreen reputation and warning behavior are controlled by Microsoft’s trust and reputation systems and are not guaranteed solely by signing.
 > 2. **macOS:** Apple Developer ID certificate and automated Apple Notary Service ticket stapling (`xcrun notarytool`) to satisfy default Gatekeeper security policies.
 > 3. **Linux:** GPG signing for repository distributions (e.g. APT and DNF repos) and package integrity verification.
