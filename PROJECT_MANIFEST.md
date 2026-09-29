@@ -1,8 +1,9 @@
 # PC Doctor — Project Manifest & System Architecture Reference
 
-**Document Version**: 1.0.0  
-**Status**: Frozen Baseline (Phase 15.2A)  
+**Document Version**: 1.1.0 (Phase 15.3 Re-Freeze)  
+**Status**: Frozen Baseline (Phase 15.3)  
 **Target Systems**: Windows 11, Linux (Debian/Ubuntu, Fedora, Arch, openSUSE, Alpine), macOS (13+ Ventura, Sonoma, Sequoia)  
+**Current Commit**: `b31ca277db4226c04aedbac5b2787a5611cd8c31` (and subsequent handoff documentation commit)  
 
 ---
 
@@ -10,10 +11,16 @@
 
 ```text
 pc-doc/
+├── .github/                             # Continuous Integration workflows
+│   └── workflows/
+│       ├── cross-platform-validation.yml# Authoritative Phase 15.3 multi-OS matrix workflow
+│       ├── release_candidate.yml        # Release candidate packaging workflow
+│       ├── stage8_1_linux.yml           # Linux live validation workflow
+│       └── stage8_1_macos.yml           # macOS live validation workflow
 ├── backend/                             # Python FastAPI analytical and remediation core
 │   ├── adapters/                        # Package manager adapter drivers
 │   │   ├── base.py                      # BaseAdapter abstract contract
-│   │   ├── winget.py, choco.py, scoop.py # Windows package managers
+│   │   ├── winget.py, choco.py, scoop.py# Windows package managers
 │   │   ├── apt.py, dnf.py, pacman.py    # Linux distribution package managers
 │   │   ├── zypper.py, apk.py            # Extended Linux providers (openSUSE, Alpine)
 │   │   ├── brew.py                      # macOS Homebrew adapter
@@ -40,6 +47,7 @@ pc-doc/
 │   ├── routes_agent.py                  # Agent goal runner and tool execution endpoints
 │   ├── routes_ai.py                     # AI diagnostic chat and suggestions
 │   ├── knowledge.db                     # SQLite static golden recipe database
+│   ├── knowledge_static.db              # Sealed static knowledge partition
 │   └── requirements.txt                 # Python backend package dependencies
 ├── frontend/                            # Web frontend user interface
 │   ├── index.html                       # Application shell and single-page container
@@ -60,19 +68,28 @@ pc-doc/
 │   ├── test_phase13_1_problem54_linux_outdated_repo.py       # Problem #54 contract test suite
 │   ├── test_phase13_1_problem56_multiple_sources.py          # Problem #56 multi-source contract suite
 │   ├── test_phase13_1_trusted_authorization.py               # Provenance trust & authorization
-│   ├── test_elevation_architecture.py                        # UAC / sudo privilege management
-│   ├── test_execution_pipeline_consolidation.py              # Centralized mutation boundary tests
+│   ├── test_cross_platform_validation.py                     # Stage 8 / cross-platform contracts
+│   ├── test_authoritative_safety_hardening.py                # Pre-execution safety gate tests
 │   └── ...                                                  # Additional integration & unit tests
 ├── scratch/                             # Machine-readable research datasets & evidence
-│   ├── phase15_results.json             # N=75 canonical evaluation records
-│   ├── phase15_1_claim_matrix.json      # Audited research claim matrix (IEEE publication)
-│   ├── phase15_2a_postfix_evidence.json # Post-fix reconciliation machine-readable record
-│   ├── test_postfix_rq5_live.py         # Live production post-fix RQ5 test script
-│   └── test_windows_native_live.py      # Bare-metal Windows native validation suite
+│   ├── run_phase15_3_cross_platform_ci.py                    # Phase 15.3 authoritative CI runner
+│   ├── phase15_3_cross_platform_ci_results.json              # Phase 15.3 structured JSON evidence
+│   ├── phase15_3_cross_platform_ci_results.csv               # Phase 15.3 structured CSV evidence
+│   ├── phase15_2a_postfix_evidence.json                      # Post-fix reconciliation record
+│   ├── phase15_2a_postfix_evidence.csv                       # Post-fix reconciliation table
+│   ├── phase15_1_claim_matrix.json                           # Audited research claim matrix (IEEE)
+│   ├── phase15_results.json                                  # N=75 canonical evaluation records
+│   ├── test_postfix_rq5_live.py                              # Live production post-fix RQ5 test script
+│   └── test_windows_native_live.py                           # Bare-metal Windows native validation suite
 ├── main.py                              # Backend startup entry point (FastAPI server on 8765)
 ├── README.md                            # High-level project summary
 ├── TEAM_HANDOFF.md                      # Comprehensive team handoff guide
 ├── PROJECT_MANIFEST.md                  # This document
+├── PHASE_15_3_CROSS_PLATFORM_CI_VALIDATION.md # Phase 15.3 validation report
+├── PHASE_15_2A_POSTFIX_EVIDENCE_RECONCILIATION.md # Phase 15.2A post-fix report
+├── PHASE_15_2_INDEPENDENT_CODE_AND_CROSS_PLATFORM_VALIDATION.md # Phase 15.2 report
+├── PHASE_15_1_PUBLICATION_EVIDENCE_AUDIT.md # Phase 15.1 publication audit report
+├── PHASE_15_FINAL_RESEARCH_EVALUATION.md # Phase 15 research evaluation report
 ├── .env.example                         # Environment configuration template
 └── pytest.ini                           # Test runner configuration
 ```
@@ -87,8 +104,9 @@ pc-doc/
 | **Frontend Shell** | [`frontend/index.html`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/frontend/index.html) | Single-page UI with diagnosis dashboard, repair console, and settings | Serve via Tauri or `npm run dev` |
 | **Tauri Desktop** | [`src-tauri/src/main.rs`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/src-tauri/src/main.rs) | Rust binary: spawns Python backend child process, creates native window | Run `npm run tauri dev` |
 | **Execution Engine**| [`backend/execution_engine.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/execution_engine.py) | Sole mutation boundary (`CentralizedExecutionEngine`) | Covered by regression suites |
-| **Safety Gate** | [`backend/authoritative_safety.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/authoritative_safety.py) | Intercepts commands against blacklist and OS policies before execution | Verified via `test_phase14_system_hardening.py` |
+| **Safety Gate** | [`backend/authoritative_safety.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/authoritative_safety.py) | Intercepts commands against blacklist and OS policies before execution | Verified via `test_authoritative_safety_hardening.py` |
 | **Verification** | [`backend/verification_engine.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/verification_engine.py) | 5-level post-mutation verification engine (`AuthoritativeVerificationEngine`) | Verified via `test_phase15_2_verification_precedence_regression.py` |
+| **CI Runner** | [`scratch/run_phase15_3_cross_platform_ci.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/scratch/run_phase15_3_cross_platform_ci.py) | Authoritative cross-platform evaluation script | Run `python scratch/run_phase15_3_cross_platform_ci.py` |
 
 ---
 
@@ -98,53 +116,58 @@ PC Doctor relies on a local SQLite static database to provide deterministic, ver
 - **Location**: `backend/knowledge.db`
 - **Tables**:
   - `canonical_recipes`: Verified golden recipes (`STATIC_DB`) for canonical developer tools with trust scores $\ge 0.90$.
-  - `problem_taxonomy`: Definitions, categories, and feasibility classifications for all 75 canonical problems.
-  - `tool_identities`: Tool metadata, aliases, executable filenames, and probe arguments.
-- **Determinism**: The application functions 100% autonomously offline using local database recipes, without requiring active internet connectivity or external LLM API calls for standard repairs.
+  - `failure_patterns`: Symptom signatures matching environment errors to canonical problem IDs (1–75).
+- **Seeding & Maintenance**:
+  ```bash
+  python backend/populate_static_db.py
+  ```
 
 ---
 
-## 4. AI & Dynamic Provider Architecture
+## 4. Setup, Run, Build, and Test Commands
 
-When users query the AI assistant or encounter uncataloged developer environment problems:
-- **Location**: `backend/routes_ai.py` and `backend/ai/`
-- **Supported Providers**: OpenAI (`gpt-4o`), Google Gemini (`gemini-2.0-flash`), Anthropic Claude (`claude-3-5-sonnet`), NVIDIA NIM (`meta/llama-3.1-70b-instruct`), and Local Ollama.
-- **Strict Provenance Boundary**: All recipes proposed by AI models are classified as `ProvenanceSource.AI_RAG` or `ProvenanceSource.WEB_RAG` with low initial trust scores ($< 0.85$). They **strictly require explicit user approval** (`approved=True`) and must pass the Live Safety Gate before execution.
-
----
-
-## 5. Build & Run Commands
-
+### 4.1 Setup Environment
 ```bash
-# 1. Install Backend Dependencies
+# Python backend virtualenv
 python -m venv backend/.venv
-backend\.venv\Scripts\activate
-pip install -r backend/requirements.txt
+# Windows:
+backend\.venv\Scripts\Activate.ps1
+# POSIX:
+source backend/.venv/bin/activate
+pip install -r backend/requirements.txt pytest httpx
 
-# 2. Install Frontend Dependencies
-cd frontend
-npm install
-cd ..
-
-# 3. Launch Backend in Development Mode
-python main.py
-
-# 4. Launch Full Tauri Desktop Application
-npm run tauri dev
-
-# 5. Run Test Regression Suite
-python -m pytest tests/test_phase15_2_verification_precedence_regression.py tests/test_phase15_research_evaluation.py
-python -m pytest -q
-
-# 6. Production Bundle Build
-cd frontend && npm run build && cd ..
-npm run tauri build
+# Frontend dependencies
+cd frontend && npm install && cd ..
 ```
 
----
+### 4.2 Run in Development
+```bash
+# Backend standalone
+python main.py
 
-## 6. Known Limitations & Research Boundaries
+# Tauri desktop application
+npm run tauri dev
+```
 
-1. **Hardware & OS Asymmetry**: Native bare-metal live execution was comprehensively validated on Windows 11 AMD64. Linux (APT, DNF, Pacman, Zypper, APK) and macOS (Homebrew, `/Applications` bundles) capabilities are validated via formal contract and mock test suites. Live field deployment on physical Linux and macOS hardware remains an avenue for future extension.
-2. **75-Problem Taxonomy Scope**: The system addresses the 75 canonical scenarios defined in the research taxonomy. Uncataloged third-party software with custom proprietary installers falls back to human-guided review.
-3. **Hardware & Kernel Drivers**: In accordance with safety policies, low-level kernel driver installations (e.g., NVIDIA GPU display drivers, BIOS updates) route strictly to human-guided instructions rather than automated unattended mutation.
+### 4.3 Automated Test Execution
+```bash
+# Phase 15.3 Authoritative Cross-Platform CI Runner:
+python scratch/run_phase15_3_cross_platform_ci.py
+
+# Targeted core cross-platform test suites:
+pytest tests/test_cross_platform_validation.py \
+       tests/test_authoritative_safety_hardening.py \
+       tests/test_phase15_2_verification_precedence_regression.py \
+       tests/test_phase13_1_problem54_linux_outdated_repo.py \
+       tests/test_phase13_1_problem56_multiple_sources.py \
+       tests/test_platform_abstraction_contracts.py -q
+```
+
+### 4.4 Build Production Bundle
+```bash
+# Frontend build
+cd frontend && npm run build && cd ..
+
+# Tauri desktop build
+npm run tauri build
+```

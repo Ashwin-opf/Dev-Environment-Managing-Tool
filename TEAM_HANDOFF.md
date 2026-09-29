@@ -1,17 +1,17 @@
 # PC Doctor — Team Handoff & Project Freeze Documentation
 
-**Date**: September 27, 2026  
-**Document Version**: 1.0.0  
+**Date**: September 29, 2026  
+**Document Version**: 1.1.0 (Phase 15.3 Re-Freeze)  
 **Repository**: `https://github.com/Ashwin-opf/Dev-Environment-Managing-Tool.git`  
 **Current Branch**: `main`  
-**Frozen Baseline Git Commit**: `02903a6fedd7def015276eaa129202761411adb9`  
+**Frozen Baseline Git Commit**: `b31ca277db4226c04aedbac5b2787a5611cd8c31` (and subsequent handoff documentation commit)  
 **Host Architecture Validated**: Windows 11 Pro 64-bit AMD64 (Build 10.0.26200 / 22631)  
 
 ---
 
 ## 1. Project Overview
 
-**PC Doctor** is an autonomous developer environment diagnosis, repair, and verification desktop system built with a high-performance **Rust / Tauri 2** native application shell, a **FastAPI / Python 3.13** core analytical backend, and a modern, responsive **HTML5/CSS3/Vanilla JS** frontend interface.
+**PC Doctor** is an autonomous developer environment diagnosis, repair, and verification desktop system built with a high-performance **Rust / Tauri 2** native application shell, a **FastAPI / Python 3.12+** core analytical backend, and a modern, responsive **HTML5/CSS3/Vanilla JS** frontend interface.
 
 PC Doctor identifies, isolates, remediates, and authoritatively verifies 75 canonical developer environment failure modes across package managers, runtime toolchains, PATH corruptions, service failures, configuration drifts, and version conflicts.
 
@@ -19,7 +19,7 @@ PC Doctor identifies, isolates, remediates, and authoritatively verifies 75 cano
 
 ## 2. Current Status & Engineering Freeze
 
-The PC Doctor engineering and research implementation is **formally frozen** following the completion of Phase 15.2 and Phase 15.2A:
+The PC Doctor engineering and research implementation is **formally frozen** following the completion of Phase 12.1 through Phase 15.3:
 
 ```text
 Phase 12.1   — Final 75-Problem Taxonomy Audit & Boundary Formalization
@@ -31,9 +31,10 @@ Phase 15.1   — Publication Evidence Audit & Claim Calibration
 Phase 15.1A  — RQ7 Baseline Mutation Count Reconciliation
 Phase 15.2   — Independent Code Audit & Cross-Platform Native Validation
 Phase 15.2A  — Post-Fix Verification Evidence Reconciliation & Repository Freeze
+Phase 15.3   — Cross-Platform Validation via GitHub Actions & External OS Environments
 ```
 
-All 75 canonical problem definitions, execution tier boundaries, safety gate invariants, and verification precedence rules are established, validated, and protected by permanent regression tests.
+All 75 canonical problem definitions, execution tier boundaries, safety gate invariants, verification precedence rules, and cross-platform CI pipelines are established, validated, and protected by permanent regression tests.
 
 ---
 
@@ -42,7 +43,7 @@ All 75 canonical problem definitions, execution tier boundaries, safety gate inv
 ### 3.1 Authoritative Mutation Boundary
 `CentralizedExecutionEngine` (`backend/execution_engine.py`) serves as the **sole and exclusive developer-environment mutation boundary** across the entire codebase.
 
-- An exhaustive audit of all 84 process-spawning and execution primitives confirmed that **100% of mutating operations** route through `CentralizedExecutionEngine._run_subprocess` and `CentralizedExecutionEngine._stream_subprocess`.
+- An exhaustive audit of all process-spawning and execution primitives confirmed that **100% of mutating operations** route through `CentralizedExecutionEngine._run_subprocess` and `CentralizedExecutionEngine._stream_subprocess`.
 - The Rust/Tauri native layer (`src-tauri/`) spawns child processes strictly for backend lifecycle supervision (clearing port 8765, launching `python main.py`). Exactly **zero** developer environment mutations are executed in Rust.
 - Exactly **0 mutation bypass paths** exist in the codebase.
 
@@ -73,7 +74,7 @@ Every mutating remediation workflow traverses an invariant 11-stage pipeline:
 11. Logging         (Structured telemetry event emitted to append-only log with redacted secrets)
 ```
 
-### 3.3 Authoritative Verification Precedence (Phase 15.2A Fix)
+### 3.3 Authoritative Verification Precedence (Phase 15.2 Fix)
 Post-mutation verification follows strict precedence:
 1. `verif_res` (`verification_engine.verify_tool`) is strictly authoritative when present.
 2. If `returncode == 0` but verification fails (missing binary, runtime crash, probe timeout), `final_status` is forced to `VERIFICATION_FAILED` or `VERIFICATION_TIMEOUT` with `success = False`.
@@ -84,23 +85,31 @@ Post-mutation verification follows strict precedence:
 
 ## 4. Cross-Platform Evidence Status
 
-The table below reflects the actual evidence established across all evaluated platforms:
+The table below reflects the actual evidence established across all evaluated platforms under Phase 15.3:
 
-| Capability | Windows (Host) | Linux (WSL/Container) | macOS (Darwin) | Evidentiary Basis |
-| :--- | :---: | :---: | :---: | :--- |
-| **Tool & PATH Discovery** | **NATIVE_LIVE** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | W1: Discovered 21 valid PATH dirs, Git, Python, Node, Winget, Cargo, Rustc live on host |
-| **Version Detection / Probing** | **NATIVE_LIVE** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | W3: Direct executable version probe on `git.exe` returned `2.55.0` live |
-| **Package Manager Discovery** | **NATIVE_LIVE** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | W2: `winget` active system adapter; `choco`/`scoop` absent live |
-| **Installation** | **CONTRACT_VALIDATED / MOCK_VALIDATED** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | Formal contract suites; no live host package mutations executed |
-| **Update** | **CONTRACT_VALIDATED / MOCK_VALIDATED** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | Formal contract suites; no live host package mutations executed |
-| **Uninstall** | **CONTRACT_VALIDATED / MOCK_VALIDATED** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | Formal contract suites; no live host package mutations executed |
-| **Verification Failure Handling** | **NATIVE_LIVE** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | W7 & Live RQ5: Exit 0 targeting missing tool yields `VERIFICATION_FAILED`, 1 mutation |
-| **State Rescan** | **NATIVE_LIVE** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | Post-mutation tool rescan executed on live host |
-| **LIVE Safety Gate (Blacklist/Wrong-OS)**| **NATIVE_LIVE** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | W4 & W5: `rmdir C:\Windows` and `sudo apt-get` intercepted before spawn |
-| **Centralized Mutation Boundary** | **NATIVE_LIVE** | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | W6: `approved=False` halts execution before subprocess creation |
-| **Multiple Sources (#56)** | **NATIVE_LIVE** (Discovery) / **CONTRACT_VALIDATED** (Migration) | **CONTRACT_VALIDATED** | **CONTRACT_VALIDATED** | Live host discovery; target-first migration contract (6/6 tests passed) |
-| **Outdated Repo (#54)** | N/A (Linux Specific) | **CONTRACT_VALIDATED** | N/A | Problem #54 contract suite (8/8 tests passed; refresh failure halts before update) |
-| **Elevation / UAC Decline** | **NATIVE_LIVE** | N/A | N/A | W8: `ShellExecuteEx` ERROR_CANCELLED (exit code 1223) yields `USER_DECLINED_ELEVATION` |
+| # | Capability | Windows Local | Windows CI | Linux CI | macOS CI | Evidentiary Basis |
+| :-: | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1** | **Detection** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Host platform adapter, kernel, and machine signals parsed live |
+| **2** | **Version probing** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Direct executable probe on `git`, `python`, `node`, `cargo`, `rustc` |
+| **3** | **Provider selection** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` (APT) / `CONTRACT_VALIDATED` (others) | `GITHUB_HOSTED_MACOS` | WinGet (Windows), Homebrew (Darwin), APT (Ubuntu); DNF/Pacman/Zypper/APK contracts |
+| **4** | **Installation** | `CONTRACT_VALIDATED` | `CONTRACT_VALIDATED` | `CONTRACT_VALIDATED` | `CONTRACT_VALIDATED` | Formal provider contract suites; no uncoordinated CI package mutations |
+| **5** | **Update** | `CONTRACT_VALIDATED` | `CONTRACT_VALIDATED` | `CONTRACT_VALIDATED` | `CONTRACT_VALIDATED` | Formal provider contract suites; safe upgrade syntax verified |
+| **6** | **Uninstall** | `NATIVE_WINDOWS` (policy) / `CONTRACT_VALIDATED` | `GITHUB_HOSTED_WINDOWS` (policy) / `CONTRACT_VALIDATED` | `GITHUB_HOSTED_LINUX` (policy) / `CONTRACT_VALIDATED` | `GITHUB_HOSTED_MACOS` (policy) / `CONTRACT_VALIDATED` | Invariant: External unmanaged source routes to REVIEW_REQUIRED (0 deletions) |
+| **7** | **Verification** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Normal pass + Phase 15.2 precedence defect regression (exit 0 + probe fail -> VERIFICATION_FAILED) |
+| **8** | **Rescan** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Post-repair machine state and tool rescan executed on live host |
+| **9** | **Safety Gate** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Destructive commands (`rm -rf /`, `del System32`) & Wrong-OS commands blocked (0 subprocesses) |
+| **10** | **Centralized mutation**| `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Sole mutation boundary audit: all recipes dispatch via CentralizedExecutionEngine |
+| **11** | **Multiple sources** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | MultiSourceDetector resolves active PATH; flags shadowed/redundant binaries |
+| **12** | **#54 (Outdated Repo)** | `CONTRACT_VALIDATED` | `CONTRACT_VALIDATED` | `GITHUB_HOSTED_LINUX` (APT) / `CONTRACT_VALIDATED` (others) | `CONTRACT_VALIDATED` | Multi-step refresh plan: refresh metadata first, update package, probe version |
+| **13** | **#56 (Multi-Source)** | `NATIVE_WINDOWS` | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Safe migration invariant: target source verified BEFORE redundant source removal |
+| **14** | **Tauri build** | `STATIC_ANALYSIS_ONLY`* | `GITHUB_HOSTED_WINDOWS` | `GITHUB_HOSTED_LINUX` | `GITHUB_HOSTED_MACOS` | Frontend production bundle verified; cargo check verified on hosted runners |
+
+*\*Note on Tauri Local Windows: On the local developer machine, corporate/sandbox Windows Application Control (AppLocker / WDAC) policies prevent custom build scripts from executing within `src-tauri/target/debug/build/` (os error 4551). In contrast, GitHub-hosted virtual runners operate without application control restrictions and compile the Tauri crate without issue.*
+
+### 4.1 Explicit Evidence Distinction
+- **No False Native Claims**: GitHub-hosted Linux (`ubuntu-latest`) and macOS (`macos-latest`) runners provide authentic OS system calls and execution environments, but they are virtualized hosted environments rather than physical hardware.
+- **Physical Machine Validation Reserved**: Results on bare-metal physical Linux or macOS machines will be recorded separately as `SELF_HOSTED_NATIVE` or `NATIVE_LIVE`.
+- **Containers & Emulators**: Neither WSL2 nor Docker is presented as native macOS or bare-metal Linux.
 
 ---
 
@@ -108,14 +117,14 @@ The table below reflects the actual evidence established across all evaluated pl
 
 The remaining engineering work relates strictly to **extended physical platform validation**:
 
-1. **Bare-Metal Physical Linux Validation**:
-   - Execute live package manager integrations directly on native Linux distributions (Ubuntu/Debian via APT, Fedora/RHEL via DNF, Arch via Pacman, openSUSE via Zypper, Alpine via APK).
+1. **Bare-Metal Physical Linux Validation (`SELF_HOSTED_NATIVE` / `NATIVE_LIVE`)**:
+   - Execute live package manager integrations directly on native Linux physical hardware (Ubuntu/Debian via APT, Fedora/RHEL via DNF, Arch via Pacman, openSUSE via Zypper, Alpine via APK).
    - Verify native sudo elevation and `/etc/os-release` parsing under live Linux kernels.
-2. **Bare-Metal Physical macOS Validation**:
+2. **Bare-Metal Physical macOS Validation (`SELF_HOSTED_NATIVE` / `NATIVE_LIVE`)**:
    - Execute live Homebrew cask and `/Applications` bundle migrations on physical macOS hardware (Apple Silicon M-series and Intel x86_64).
    - Validate native macOS authorization dialogs and `launchctl` service management.
 3. **Phase 16 — IEEE Paper Preparation**:
-   - Format final empirical tables using the reconciled publication evidence from `PHASE_15_1_PUBLICATION_EVIDENCE_AUDIT.md` and `PHASE_15_2A_POSTFIX_EVIDENCE_RECONCILIATION.md`.
+   - Format final empirical tables using the publication evidence from `PHASE_15_1_PUBLICATION_EVIDENCE_AUDIT.md`, `PHASE_15_2A_POSTFIX_EVIDENCE_RECONCILIATION.md`, and `PHASE_15_3_CROSS_PLATFORM_CI_VALIDATION.md`.
 
 ---
 
@@ -125,7 +134,7 @@ The following commands were tested and verified on the host system:
 
 ### 6.1 Prerequisites
 - **Python**: 3.12.x or 3.13.x 64-bit
-- **Node.js**: v20.x or v24.x (npm included)
+- **Node.js**: v20.x, v22.x, or v24.x (npm included)
 - **Rust**: 1.80+ with `cargo` (for desktop application builds)
 
 ### 6.2 Backend Setup
@@ -142,7 +151,7 @@ backend\.venv\Scripts\activate.bat
 source backend/.venv/bin/activate
 
 # 3. Install backend dependencies
-pip install -r backend/requirements.txt
+pip install -r backend/requirements.txt pytest httpx
 ```
 
 ### 6.3 Frontend Setup
@@ -156,7 +165,7 @@ cd ..
 ### 6.4 Database Initialization
 The SQLite static knowledge database is pre-populated at `backend/knowledge.db`. To verify or reset:
 ```bash
-python -c "import sqlite3; conn = sqlite3.connect('backend/knowledge.db'); print('Tables:', conn.execute(\"SELECT name FROM sqlite_master WHERE type='table'\").fetchall())"
+python backend/populate_static_db.py
 ```
 
 ### 6.5 Running in Development Mode
@@ -174,17 +183,14 @@ npm run tauri dev
 
 ### 6.6 Running Automated Tests
 ```bash
-# Run focused verification precedence & research evaluation regression:
-python -m pytest tests/test_phase15_2_verification_precedence_regression.py tests/test_phase15_research_evaluation.py
+# Run focused Phase 15.3 Authoritative Cross-Platform CI Runner:
+python scratch/run_phase15_3_cross_platform_ci.py
 
-# Run targeted live post-fix RQ5 production validation:
-python scratch/test_postfix_rq5_live.py
+# Run verification precedence & research evaluation regression:
+python -m pytest tests/test_phase15_2_verification_precedence_regression.py tests/test_cross_platform_validation.py tests/test_authoritative_safety_hardening.py tests/test_phase13_1_problem54_linux_outdated_repo.py tests/test_phase13_1_problem56_multiple_sources.py tests/test_platform_abstraction_contracts.py -q
 
-# Run targeted live Windows native capabilities:
-python scratch/test_windows_native_live.py
-
-# Run complete workspace regression suite (715 tests):
-python -m pytest -q
+# Run complete workspace regression suite:
+python -m pytest tests/ -q
 ```
 
 ### 6.7 Building Production Release Bundles

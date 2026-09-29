@@ -65,6 +65,14 @@ PC Doc/
 └── config/              # Local app settings
 ```
 
+## Cross-Platform Validation & CI Status (Phase 15.3)
+
+PC Doctor includes automated, reproducible cross-platform validation via GitHub Actions ([`.github/workflows/cross-platform-validation.yml`](.github/workflows/cross-platform-validation.yml)):
+- **Windows**: Validated natively on local Windows 11 host (`NATIVE_WINDOWS` / `NATIVE_LIVE`) and on GitHub-hosted Windows runners (`GITHUB_HOSTED_WINDOWS`).
+- **Linux**: Validated via GitHub-hosted Linux runner (`GITHUB_HOSTED_LINUX` on Ubuntu 24.04 with live APT, PATH, permissions, detection) and formal provider contract tests (`CONTRACT_VALIDATED`) for Fedora/DNF, Arch/Pacman, openSUSE/Zypper, and Alpine/APK.
+- **macOS**: Validated via GitHub-hosted macOS runner (`GITHUB_HOSTED_MACOS` with live Darwin kernel, Homebrew detection, `/Applications` bundle scanning) and contract tests.
+- **Physical Native Limitation**: Bare-metal physical Linux and macOS testing is explicitly reserved for future team-machine execution (`SELF_HOSTED_NATIVE` / `NATIVE_LIVE`). Virtualized cloud environments are never represented as physical hardware.
+
 ## Notes
 
 - Every repair command is shown to the user before execution.
