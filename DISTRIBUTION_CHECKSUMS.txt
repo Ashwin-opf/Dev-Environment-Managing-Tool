@@ -1,0 +1,25 @@
+========================================================================
+PC Doctor v1.0.0-rc.1 — Official Distribution Artifact Checksums (SHA-256)
+========================================================================
+
+# Windows Distribution Artifacts
+fc133a19ec051e4fd7c7c7276410bf38dc70e2a6e5e6cf8b04d58fb1e78163bf  PC_Doctor_WINDOWS_PORTABLE.zip
+SHA256_PENDING_CI_WINDOWS_RUNNER  PC_Doctor_WINDOWS_INSTALLER.exe
+
+# Linux Distribution Artifacts
+SHA256_PENDING_CI_LINUX_RUNNER  PC_Doctor_LINUX.AppImage
+SHA256_PENDING_CI_LINUX_RUNNER  PC_Doctor_LINUX.deb
+SHA256_PENDING_CI_LINUX_RUNNER  PC_Doctor_LINUX.rpm
+
+# macOS Distribution Artifacts
+SHA256_PENDING_CI_MACOS_RUNNER  PC_Doctor.app.tar.gz
+SHA256_PENDING_CI_MACOS_RUNNER  PC_Doctor.dmg
+
+========================================================================
+NOTES:
+* PC_Doctor_WINDOWS_PORTABLE.zip hash is authoritative from local verified packaging.
+* Installer, Linux, and macOS hashes are generated deterministically by the
+  .github/workflows/build-distributions.yml CI runner matrix on native OS VMs.
+* All packages contain the self-contained PyInstaller FastAPI backend.
+* Host developer Python / Node / Rust is NOT required.
+========================================================================

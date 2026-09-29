@@ -73,6 +73,14 @@ PC Doctor includes automated, reproducible cross-platform validation via GitHub 
 - **macOS**: Validated via GitHub-hosted macOS runner (`GITHUB_HOSTED_MACOS` with live Darwin kernel, Homebrew detection, `/Applications` bundle scanning) and contract tests.
 - **Physical Native Limitation**: Bare-metal physical Linux and macOS testing is explicitly reserved for future team-machine execution (`SELF_HOSTED_NATIVE` / `NATIVE_LIVE`). Virtualized cloud environments are never represented as physical hardware.
 
+## Desktop Distribution & Packaging (Phase 15.5)
+
+PC Doctor provides pre-compiled desktop distribution packages across Windows, Linux, and macOS via [`.github/workflows/build-distributions.yml`](.github/workflows/build-distributions.yml):
+- **Windows**: NSIS Installer (`PC_Doctor_WINDOWS_INSTALLER.exe`) and standalone Portable ZIP (`PC_Doctor_WINDOWS_PORTABLE.zip`).
+- **Linux**: Debian package (`PC_Doctor_LINUX.deb`), RPM package (`PC_Doctor_LINUX.rpm`), and portable AppImage (`PC_Doctor_LINUX.AppImage`).
+- **macOS**: Drag-and-drop disk image (`PC_Doctor.dmg`) and application bundle (`PC_Doctor.app`).
+- **FastAPI Backend**: Self-contained PyInstaller executable bundled inside each package; no host Python or development runtime is required.
+
 ## Notes
 
 - Every repair command is shown to the user before execution.

@@ -1,9 +1,9 @@
 # PC Doctor — Project Manifest & System Architecture Reference
 
-**Document Version**: 1.1.0 (Phase 15.3 Re-Freeze)  
-**Status**: Frozen Baseline (Phase 15.3)  
+**Document Version**: 1.2.0 (Phase 15.5 Desktop Packaging & Distribution)  
+**Status**: Frozen Baseline (Phase 15.5)  
 **Target Systems**: Windows 11, Linux (Debian/Ubuntu, Fedora, Arch, openSUSE, Alpine), macOS (13+ Ventura, Sonoma, Sequoia)  
-**Current Commit**: `b31ca277db4226c04aedbac5b2787a5611cd8c31` (and subsequent handoff documentation commit)  
+**Current Commit**: `b31ca277db4226c04aedbac5b2787a5611cd8c31` (and subsequent packaging commits)  
 
 ---
 
@@ -13,6 +13,7 @@
 pc-doc/
 ├── .github/                             # Continuous Integration workflows
 │   └── workflows/
+│       ├── build-distributions.yml      # Phase 15.5 Cross-Platform Desktop Distribution Matrix
 │       ├── cross-platform-validation.yml# Authoritative Phase 15.3 multi-OS matrix workflow
 │       ├── release_candidate.yml        # Release candidate packaging workflow
 │       ├── stage8_1_linux.yml           # Linux live validation workflow
@@ -72,6 +73,11 @@ pc-doc/
 │   ├── test_authoritative_safety_hardening.py                # Pre-execution safety gate tests
 │   └── ...                                                  # Additional integration & unit tests
 ├── scratch/                             # Machine-readable research datasets & evidence
+│   ├── run_phase15_5_packaging_validation.py                # Phase 15.5 distribution & packaging validation
+│   ├── phase15_5_distribution_matrix.json                   # Phase 15.5 structured JSON matrix
+│   ├── phase15_5_distribution_matrix.csv                    # Phase 15.5 structured CSV matrix
+│   ├── create_portable_package.py                           # Windows Portable ZIP assembler
+│   ├── test_portable_resource_validation.py                 # Isolated runtime resource validation test
 │   ├── run_phase15_3_cross_platform_ci.py                    # Phase 15.3 authoritative CI runner
 │   ├── phase15_3_cross_platform_ci_results.json              # Phase 15.3 structured JSON evidence
 │   ├── phase15_3_cross_platform_ci_results.csv               # Phase 15.3 structured CSV evidence
@@ -84,6 +90,8 @@ pc-doc/
 ├── README.md                            # High-level project summary
 ├── TEAM_HANDOFF.md                      # Comprehensive team handoff guide
 ├── PROJECT_MANIFEST.md                  # This document
+├── DISTRIBUTION_CHECKSUMS.txt           # Phase 15.5 authoritative distribution checksums
+├── PHASE_15_5_CROSS_PLATFORM_DESKTOP_DISTRIBUTION.md # Phase 15.5 distribution report
 ├── PHASE_15_3_CROSS_PLATFORM_CI_VALIDATION.md # Phase 15.3 validation report
 ├── PHASE_15_2A_POSTFIX_EVIDENCE_RECONCILIATION.md # Phase 15.2A post-fix report
 ├── PHASE_15_2_INDEPENDENT_CODE_AND_CROSS_PLATFORM_VALIDATION.md # Phase 15.2 report
@@ -101,11 +109,13 @@ pc-doc/
 | :--- | :--- | :--- | :--- |
 | **Backend Server** | [`backend/main.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/main.py) | Initializes FastAPI app, mounts routes, starts Uvicorn on `127.0.0.1:8765` | Run `python backend/main.py` |
 | **Frontend Shell** | [`frontend/index.html`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/frontend/index.html) | Single-page UI with diagnosis dashboard, repair console, and settings | Serve via Tauri or `npm run dev` |
-| **Tauri Desktop** | [`src-tauri/src/main.rs`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/src-tauri/src/main.rs) | Rust binary: spawns Python backend child process, creates native window | Run `npm run tauri dev` |
+| **Tauri Desktop** | [`src-tauri/src/main.rs`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/src-tauri/src/main.rs) | Rust binary: spawns standalone backend executable or Python child, creates native window | Run `npm run tauri dev` |
+| **Standalone Backend** | [`dist/pc-doctor-backend/pc-doctor-backend.exe`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/dist/pc-doctor-backend/pc-doctor-backend.exe) | Compiled PyInstaller backend binary (standalone, no host Python required) | Built via `pyinstaller` |
+| **Windows Portable** | [`PC_Doctor_WINDOWS_PORTABLE.zip`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/PC_Doctor_WINDOWS_PORTABLE.zip) | Portable package with bundled backend & UI | Run `run_portable.bat` |
 | **Execution Engine**| [`backend/execution_engine.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/execution_engine.py) | Sole mutation boundary (`CentralizedExecutionEngine`) | Covered by regression suites |
 | **Safety Gate** | [`backend/authoritative_safety.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/authoritative_safety.py) | Intercepts commands against blacklist and OS policies before execution | Verified via `test_authoritative_safety_hardening.py` |
 | **Verification** | [`backend/verification_engine.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/verification_engine.py) | 5-level post-mutation verification engine (`AuthoritativeVerificationEngine`) | Verified via `test_phase15_2_verification_precedence_regression.py` |
-| **CI Runner** | [`scratch/run_phase15_3_cross_platform_ci.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/scratch/run_phase15_3_cross_platform_ci.py) | Authoritative cross-platform evaluation script | Run `python scratch/run_phase15_3_cross_platform_ci.py` |
+| **Distribution Runner** | [`scratch/run_phase15_5_packaging_validation.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/scratch/run_phase15_5_packaging_validation.py) | Phase 15.5 distribution matrix and checksum validator | Run `python scratch/run_phase15_5_packaging_validation.py` |
 
 ---
 
@@ -170,3 +180,26 @@ cd frontend && npm run build && cd ..
 # Tauri desktop build
 npm run tauri build
 ```
+
+### 4.5 Desktop Packaging & Distribution Commands (Phase 15.5)
+```bash
+# 1. Build Standalone Backend Binary with PyInstaller (Windows / Linux / macOS):
+pyinstaller --name pc-doctor-backend --onedir --clean --noconfirm \
+  --add-data "backend/knowledge.db;." \
+  --add-data "backend/knowledge_static.db;." \
+  --add-data "backend/pkg_catalog.json;." \
+  backend/main.py
+
+# 2. Assemble Windows Portable Package:
+python scratch/create_portable_package.py
+
+# 3. Validate Portable Package Runtime Resources (Isolated Temp Dir):
+python scratch/test_portable_resource_validation.py
+
+# 4. Generate Authoritative Distribution Matrix & Checksums:
+python scratch/run_phase15_5_packaging_validation.py
+
+# 5. Build Tauri Installers across OS via GitHub Actions:
+# Trigger .github/workflows/build-distributions.yml on GitHub
+```
+

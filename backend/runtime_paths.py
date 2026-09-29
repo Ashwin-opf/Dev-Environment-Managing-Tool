@@ -153,6 +153,9 @@ def get_bundled_static_db_path() -> Optional[Path]:
     """Locate the bundled static reference database (read-only reference knowledge)."""
     candidates = [
         BASE_DIR / "knowledge_static.db",
+        BASE_DIR / "_internal" / "knowledge_static.db",
+        Path(sys.executable).parent / "knowledge_static.db",
+        Path(sys.executable).parent / "_internal" / "knowledge_static.db",
         BASE_DIR.parent / "resources" / "backend" / "knowledge_static.db",
         Path("knowledge_static.db"),
     ]
@@ -166,6 +169,9 @@ def get_bundled_runtime_db_path() -> Optional[Path]:
     """Locate the seed runtime database (knowledge.db template)."""
     candidates = [
         BASE_DIR / "knowledge.db",
+        BASE_DIR / "_internal" / "knowledge.db",
+        Path(sys.executable).parent / "knowledge.db",
+        Path(sys.executable).parent / "_internal" / "knowledge.db",
         BASE_DIR.parent / "resources" / "backend" / "knowledge.db",
         Path("knowledge.db"),
     ]

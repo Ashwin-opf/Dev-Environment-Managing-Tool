@@ -74,6 +74,66 @@ fn find_python(backend_dir: &PathBuf) -> PathBuf {
     }
 }
 
+// ─── Helper: locate standalone backend executable ───────────────────────────
+//
+// Checks for a compiled standalone backend executable (e.g. built via PyInstaller)
+// so the packaged desktop app runs without requiring Python or .venv on the host.
+
+fn find_backend_binary() -> Option<PathBuf> {
+    if let Ok(val) = std::env::var("PC_DOCTOR_BACKEND_BIN") {
+        let p = PathBuf::from(val);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    let bin_name = if cfg!(windows) { "pc-doctor-backend.exe" } else { "pc-doctor-backend" };
+
+    // 1. Next to current_exe() & parents
+    if let Ok(exe_path) = std::env::current_exe() {
+        let mut dir = exe_path.parent().map(|p| p.to_path_buf());
+        for _ in 0..8 {
+            if let Some(ref d) = dir {
+                let candidates = [
+                    d.join(bin_name),
+                    d.join("resources").join(bin_name),
+                    d.join("resources").join("backend").join(bin_name),
+                    d.join("backend").join(bin_name),
+                    d.join("dist").join("pc-doctor-backend").join(bin_name),
+                    d.join("backend").join("dist").join("pc-doctor-backend").join(bin_name),
+                ];
+                for cand in candidates {
+                    if cand.exists() {
+                        return Some(cand);
+                    }
+                }
+                dir = d.parent().map(|p| p.to_path_buf());
+            } else {
+                break;
+            }
+        }
+    }
+
+    // 2. Current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidates = [
+            cwd.join(bin_name),
+            cwd.join("resources").join(bin_name),
+            cwd.join("resources").join("backend").join(bin_name),
+            cwd.join("backend").join(bin_name),
+            cwd.join("dist").join("pc-doctor-backend").join(bin_name),
+            cwd.join("backend").join("dist").join("pc-doctor-backend").join(bin_name),
+        ];
+        for cand in candidates {
+            if cand.exists() {
+                return Some(cand);
+            }
+        }
+    }
+
+    None
+}
+
 // ─── Helper: locate backend directory ────────────────────────────────────────
 //
 // Walks up from the exe location (at most 8 levels) looking for a directory
@@ -304,39 +364,55 @@ async fn do_start_backend(
     }
     let _ = app_handle.emit("backend-status", "starting");
 
-    // ── 3. Locate backend dir and python binary ───────────────────────────
-    let backend_dir = match find_backend_dir() {
-        Some(d) => d,
-        None => {
-            eprintln!("[PC Doctor] Cannot find backend/main.py");
-            let mut s = state.lock().unwrap();
-            s.status   = "error".into();
-            s.starting = false;
-            let _ = app_handle.emit("backend-status", "error");
-            return "error".into();
-        }
-    };
-    let main_py    = backend_dir.join("main.py");
-    let python_bin = find_python(&backend_dir);
-    let token      = state.lock().unwrap().api_token.clone();
+    // ── 3. Locate backend binary or python script ─────────────────────────
+    let standalone_bin = find_backend_binary();
+    let backend_dir_opt = find_backend_dir();
+
+    if standalone_bin.is_none() && backend_dir_opt.is_none() {
+        eprintln!("[PC Doctor] Cannot find standalone backend binary or backend/main.py");
+        let mut s = state.lock().unwrap();
+        s.status   = "error".into();
+        s.starting = false;
+        let _ = app_handle.emit("backend-status", "error");
+        return "error".into();
+    }
+
+    let token = state.lock().unwrap().api_token.clone();
 
     // ── 4. Kill orphaned process (safe: we already know health == false) ──
     kill_orphaned_on_port(8765).await;
 
-    // ── 5. Spawn Python ───────────────────────────────────────────────────
-    let child_result = Command::new(&python_bin)
-        .arg(&main_py)
-        .current_dir(&backend_dir)
-        .env("PYTHONUNBUFFERED", "1")
-        .env("PC_DOCTOR_API_TOKEN", &token)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
+    // ── 5. Spawn backend process ──────────────────────────────────────────
+    let child_result = if let Some(bin_path) = standalone_bin {
+        println!("[PC Doctor] Launching bundled standalone backend: {}", bin_path.display());
+        let work_dir = bin_path.parent().unwrap_or(&bin_path).to_path_buf();
+        Command::new(&bin_path)
+            .current_dir(&work_dir)
+            .env("PYTHONUNBUFFERED", "1")
+            .env("PC_DOCTOR_API_TOKEN", &token)
+            .env("PC_DOCTOR_PACKAGED", "1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    } else {
+        let backend_dir = backend_dir_opt.unwrap();
+        let main_py    = backend_dir.join("main.py");
+        let python_bin = find_python(&backend_dir);
+        println!("[PC Doctor] Launching Python backend script: {} with {}", python_bin.display(), main_py.display());
+        Command::new(&python_bin)
+            .arg(&main_py)
+            .current_dir(&backend_dir)
+            .env("PYTHONUNBUFFERED", "1")
+            .env("PC_DOCTOR_API_TOKEN", &token)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    };
 
     let mut child = match child_result {
         Ok(c)  => c,
         Err(e) => {
-            eprintln!("[PC Doctor] Failed to spawn Python: {e}");
+            eprintln!("[PC Doctor] Failed to spawn backend: {e}");
             let mut s   = state.lock().unwrap();
             s.status    = "error".into();
             s.starting  = false;

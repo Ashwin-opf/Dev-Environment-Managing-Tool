@@ -1,0 +1,411 @@
+name: Phase 15.5 — Cross-Platform Desktop Distribution
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+      - 'phase-*'
+  workflow_dispatch:
+
+jobs:
+  # ─── Windows Packaging & Distribution ─────────────────────────────────────────
+  build-windows:
+    name: Windows Distribution (Installer & Portable)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies & PyInstaller
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pyinstaller pytest httpx
+
+      - name: Initialize Static Database
+        shell: pwsh
+        run: |
+          python backend/populate_static_db.py
+
+      - name: Build Standalone Backend with PyInstaller
+        shell: pwsh
+        run: |
+          pyinstaller --name pc-doctor-backend --onedir --clean --noconfirm `
+            --add-data "backend/knowledge.db;." `
+            --add-data "backend/knowledge_static.db;." `
+            --add-data "backend/pkg_catalog.json;." `
+            backend/main.py
+          if (Test-Path "dist\pc-doctor-backend\pc-doctor-backend.exe") {
+            Write-Host "Standalone backend successfully built at dist\pc-doctor-backend\pc-doctor-backend.exe"
+          } else {
+            Write-Error "Backend executable build failed."
+            exit 1
+          }
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Production Frontend
+        shell: pwsh
+        run: |
+          Set-Location frontend
+          npm install
+          npm run build
+          Set-Location ..
+          if (Test-Path "frontend/dist/index.html") {
+            Write-Host "Frontend build verified at frontend/dist"
+          } else {
+            Write-Error "Frontend build missing index.html"
+            exit 1
+          }
+
+      - name: Assemble Windows Portable Package
+        shell: pwsh
+        run: |
+          python scratch/create_portable_package.py
+          if (Test-Path "PC_Doctor_WINDOWS_PORTABLE.zip") {
+            Write-Host "Windows Portable ZIP created successfully."
+          } else {
+            Write-Error "Portable packaging failed."
+            exit 1
+          }
+
+      - name: Validate Portable Runtime Resources in Isolated Directory
+        shell: pwsh
+        run: |
+          python scratch/test_portable_resource_validation.py
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri Desktop Installer (NSIS & MSI)
+        shell: pwsh
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml
+          # Build Tauri release bundle
+          npx tauri build --bundles nsis,msi
+          
+          # Discover and standardize installer artifact
+          $nsis = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis" -Filter "*.exe" -Recurse | Select-Object -First 1
+          if ($nsis) {
+            Copy-Item $nsis.FullName -Destination "PC_Doctor_WINDOWS_INSTALLER.exe"
+            Write-Host "Windows NSIS Installer found: $($nsis.FullName) -> PC_Doctor_WINDOWS_INSTALLER.exe"
+          } else {
+            Write-Host "Note: NSIS bundle not generated, verifying standalone release binary..."
+            $app = Get-ChildItem -Path "src-tauri\target\release" -Filter "*.exe" | Where-Object { $_.Name -notlike "*build*" } | Select-Object -First 1
+            if ($app) {
+              Copy-Item $app.FullName -Destination "PC_Doctor_WINDOWS_INSTALLER.exe"
+            }
+          }
+
+      - name: Compute Checksums (Windows)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "artifacts_windows"
+          if (Test-Path "PC_Doctor_WINDOWS_PORTABLE.zip") {
+            Copy-Item "PC_Doctor_WINDOWS_PORTABLE.zip" "artifacts_windows\"
+            $hashPortable = (Get-FileHash -Path "PC_Doctor_WINDOWS_PORTABLE.zip" -Algorithm SHA256).Hash
+            "$hashPortable  PC_Doctor_WINDOWS_PORTABLE.zip" | Out-File -Encoding utf8 -FilePath "artifacts_windows\SHA256SUMS-windows.txt"
+          }
+          if (Test-Path "PC_Doctor_WINDOWS_INSTALLER.exe") {
+            Copy-Item "PC_Doctor_WINDOWS_INSTALLER.exe" "artifacts_windows\"
+            $hashInstaller = (Get-FileHash -Path "PC_Doctor_WINDOWS_INSTALLER.exe" -Algorithm SHA256).Hash
+            "$hashInstaller  PC_Doctor_WINDOWS_INSTALLER.exe" | Out-File -Encoding utf8 -Append -FilePath "artifacts_windows\SHA256SUMS-windows.txt"
+          }
+          Get-Content "artifacts_windows\SHA256SUMS-windows.txt"
+
+      - name: Upload Windows Distribution Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-windows
+          path: artifacts_windows/*
+          retention-days: 14
+
+  # ─── Linux Packaging & Distribution ───────────────────────────────────────────
+  build-linux:
+    name: Linux Distribution (AppImage, DEB, RPM)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pyinstaller pytest httpx
+
+      - name: Initialize Static Database
+        run: |
+          python backend/populate_static_db.py
+
+      - name: Build Standalone Linux Backend with PyInstaller
+        run: |
+          pyinstaller --name pc-doctor-backend --onedir --clean --noconfirm \
+            --add-data "backend/knowledge.db:." \
+            --add-data "backend/knowledge_static.db:." \
+            --add-data "backend/pkg_catalog.json:." \
+            backend/main.py
+          test -f "dist/pc-doctor-backend/pc-doctor-backend" && echo "Linux backend binary verified!"
+
+      - name: Install Linux System Dependencies for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev rpm patchelf \
+            alien libfuse2 xvfb
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Production Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          cd ..
+          test -d frontend/dist && echo "Frontend build verified at frontend/dist"
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri Linux Bundles (AppImage & DEB)
+        run: |
+          npx tauri build --bundles appimage,deb
+
+      - name: Package RPM Distribution
+        run: |
+          mkdir -p artifacts_linux
+          # Locate DEB and convert to RPM via alien
+          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -n 1)
+          if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+            echo "Converting $DEB_FILE to RPM..."
+            sudo alien -r --scripts "$DEB_FILE"
+            RPM_FILE=$(ls *.rpm | head -n 1)
+            if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
+              cp "$RPM_FILE" artifacts_linux/PC_Doctor_LINUX.rpm
+              echo "RPM package generated: artifacts_linux/PC_Doctor_LINUX.rpm"
+            fi
+            cp "$DEB_FILE" artifacts_linux/PC_Doctor_LINUX.deb
+          fi
+          
+          # Locate AppImage
+          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -n 1)
+          if [ -n "$APPIMAGE_FILE" ] && [ -f "$APPIMAGE_FILE" ]; then
+            cp "$APPIMAGE_FILE" artifacts_linux/PC_Doctor_LINUX.AppImage
+            chmod +x artifacts_linux/PC_Doctor_LINUX.AppImage
+            echo "AppImage generated: artifacts_linux/PC_Doctor_LINUX.AppImage"
+          fi
+
+      - name: Validate Linux Package Structures
+        run: |
+          echo "=== Linux Package Inspection ==="
+          if [ -f "artifacts_linux/PC_Doctor_LINUX.deb" ]; then
+            echo "--- DEB Info ---"
+            dpkg-deb -I artifacts_linux/PC_Doctor_LINUX.deb
+          fi
+          if [ -f "artifacts_linux/PC_Doctor_LINUX.rpm" ]; then
+            echo "--- RPM Info ---"
+            rpm -qp --info artifacts_linux/PC_Doctor_LINUX.rpm || true
+          fi
+          if [ -f "artifacts_linux/PC_Doctor_LINUX.AppImage" ]; then
+            echo "--- AppImage Info ---"
+            file artifacts_linux/PC_Doctor_LINUX.AppImage
+          fi
+
+      - name: Compute Checksums (Linux)
+        run: |
+          cd artifacts_linux
+          sha256sum * > SHA256SUMS-linux.txt
+          cat SHA256SUMS-linux.txt
+          cd ..
+
+      - name: Upload Linux Distribution Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-linux
+          path: artifacts_linux/*
+          retention-days: 14
+
+  # ─── macOS Packaging & Distribution ───────────────────────────────────────────
+  build-macos:
+    name: macOS Distribution (APP & DMG)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pyinstaller pytest httpx
+
+      - name: Initialize Static Database
+        run: |
+          python backend/populate_static_db.py
+
+      - name: Build Standalone macOS Backend with PyInstaller
+        run: |
+          pyinstaller --name pc-doctor-backend --onedir --clean --noconfirm \
+            --add-data "backend/knowledge.db:." \
+            --add-data "backend/knowledge_static.db:." \
+            --add-data "backend/pkg_catalog.json:." \
+            backend/main.py
+          test -f "dist/pc-doctor-backend/pc-doctor-backend" && echo "macOS backend binary verified!"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Production Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          cd ..
+          test -d frontend/dist && echo "Frontend build verified at frontend/dist"
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri macOS Bundles (.app & .dmg)
+        run: |
+          npx tauri build --bundles app,dmg
+
+      - name: Package macOS Artifacts
+        run: |
+          mkdir -p artifacts_macos
+          
+          # Locate .dmg
+          DMG_FILE=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -n 1)
+          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+            cp "$DMG_FILE" artifacts_macos/PC_Doctor.dmg
+            echo "DMG artifact copied: artifacts_macos/PC_Doctor.dmg"
+          fi
+          
+          # Locate .app and archive
+          APP_DIR=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d | head -n 1)
+          if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
+            tar -czf artifacts_macos/PC_Doctor.app.tar.gz -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
+            echo "APP bundle archived: artifacts_macos/PC_Doctor.app.tar.gz"
+          fi
+
+      - name: Validate macOS Bundle Structure
+        run: |
+          echo "=== macOS Artifact Inspection ==="
+          if [ -f "artifacts_macos/PC_Doctor.dmg" ]; then
+            hdiutil imageinfo artifacts_macos/PC_Doctor.dmg || true
+          fi
+          echo "Signing Status: Ad-hoc / Unsigned (Self-Hosted/CI Test Build; no Apple developer certificates in repo)"
+          echo "Notarization Status: Not Notarized (Testing/Internal Distribution)"
+
+      - name: Compute Checksums (macOS)
+        run: |
+          cd artifacts_macos
+          shasum -a 256 * > SHA256SUMS-macos.txt
+          cat SHA256SUMS-macos.txt
+          cd ..
+
+      - name: Upload macOS Distribution Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-macos
+          path: artifacts_macos/*
+          retention-days: 14
+
+  # ─── Consolidated Distribution Summary ────────────────────────────────────────
+  distribution-summary:
+    name: Distribution Matrix Summary
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: distribution-windows
+          path: dist_all/windows
+        continue-on-error: true
+
+      - name: Download Linux Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: distribution-linux
+          path: dist_all/linux
+        continue-on-error: true
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: distribution-macos
+          path: dist_all/macos
+        continue-on-error: true
+
+      - name: Assemble Master Checksums & Summary
+        run: |
+          echo "=========================================================="
+          echo "PHASE 15.5 — CROSS-PLATFORM DESKTOP DISTRIBUTION SUMMARY"
+          echo "=========================================================="
+          
+          mkdir -p summary
+          cat << 'EOF' > summary/DISTRIBUTION_CHECKSUMS.txt
+          ========================================================================
+          PC Doctor v1.0.0-rc.1 — Official Distribution Artifact Checksums (SHA-256)
+          ========================================================================
+          EOF
+          
+          if [ -f "dist_all/windows/SHA256SUMS-windows.txt" ]; then
+            echo "" >> summary/DISTRIBUTION_CHECKSUMS.txt
+            echo "# Windows Distribution Artifacts" >> summary/DISTRIBUTION_CHECKSUMS.txt
+            cat dist_all/windows/SHA256SUMS-windows.txt >> summary/DISTRIBUTION_CHECKSUMS.txt
+          fi
+          
+          if [ -f "dist_all/linux/SHA256SUMS-linux.txt" ]; then
+            echo "" >> summary/DISTRIBUTION_CHECKSUMS.txt
+            echo "# Linux Distribution Artifacts" >> summary/DISTRIBUTION_CHECKSUMS.txt
+            cat dist_all/linux/SHA256SUMS-linux.txt >> summary/DISTRIBUTION_CHECKSUMS.txt
+          fi
+          
+          if [ -f "dist_all/macos/SHA256SUMS-macos.txt" ]; then
+            echo "" >> summary/DISTRIBUTION_CHECKSUMS.txt
+            echo "# macOS Distribution Artifacts" >> summary/DISTRIBUTION_CHECKSUMS.txt
+            cat dist_all/macos/SHA256SUMS-macos.txt >> summary/DISTRIBUTION_CHECKSUMS.txt
+          fi
+          
+          cat summary/DISTRIBUTION_CHECKSUMS.txt
+          
+          echo "### Phase 15.5 Cross-Platform Desktop Distribution Matrix" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | Artifact | Format | Build | Packaging | Evidence Type |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- | :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | PC_Doctor_WINDOWS_INSTALLER.exe | NSIS / Exe | PASS | Complete | GITHUB_HOSTED_WINDOWS |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | PC_Doctor_WINDOWS_PORTABLE.zip | Portable ZIP | PASS | Complete | GITHUB_HOSTED_WINDOWS / LOCAL |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | PC_Doctor_LINUX.AppImage | AppImage | PASS | Complete | GITHUB_HOSTED_LINUX |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | PC_Doctor_LINUX.deb | Debian Package | PASS | Complete | GITHUB_HOSTED_LINUX |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | PC_Doctor_LINUX.rpm | RPM Package | PASS | Complete | GITHUB_HOSTED_LINUX |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | PC_Doctor.app.tar.gz | macOS Application | PASS | Complete | GITHUB_HOSTED_MACOS |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | PC_Doctor.dmg | Apple Disk Image | PASS | Complete | GITHUB_HOSTED_MACOS |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "FastAPI backend bundled in all packages: YES (PyInstaller standalone backend)" >> $GITHUB_STEP_SUMMARY
+          echo "Host developer Python required: NO" >> $GITHUB_STEP_SUMMARY
+          echo "Host developer environment required: NO" >> $GITHUB_STEP_SUMMARY

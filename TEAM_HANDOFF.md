@@ -1,10 +1,10 @@
 # PC Doctor — Team Handoff & Project Freeze Documentation
 
 **Date**: September 29, 2026  
-**Document Version**: 1.1.0 (Phase 15.3 Re-Freeze)  
+**Document Version**: 1.2.0 (Phase 15.5 Desktop Packaging & Distribution)  
 **Repository**: `https://github.com/Ashwin-opf/Dev-Environment-Managing-Tool.git`  
 **Current Branch**: `main`  
-**Frozen Baseline Git Commit**: `b31ca277db4226c04aedbac5b2787a5611cd8c31` (and subsequent handoff documentation commit)  
+**Frozen Baseline Git Commit**: `b31ca277db4226c04aedbac5b2787a5611cd8c31` (and subsequent packaging commits)  
 **Host Architecture Validated**: Windows 11 Pro 64-bit AMD64 (Build 10.0.26200 / 22631)  
 
 ---
@@ -19,7 +19,7 @@ PC Doctor identifies, isolates, remediates, and authoritatively verifies 75 cano
 
 ## 2. Current Status & Engineering Freeze
 
-The PC Doctor engineering and research implementation is **formally frozen** following the completion of Phase 12.1 through Phase 15.3:
+The PC Doctor engineering and research implementation is **formally frozen** following the completion of Phase 12.1 through Phase 15.5:
 
 ```text
 Phase 12.1   — Final 75-Problem Taxonomy Audit & Boundary Formalization
@@ -32,6 +32,7 @@ Phase 15.1A  — RQ7 Baseline Mutation Count Reconciliation
 Phase 15.2   — Independent Code Audit & Cross-Platform Native Validation
 Phase 15.2A  — Post-Fix Verification Evidence Reconciliation & Repository Freeze
 Phase 15.3   — Cross-Platform Validation via GitHub Actions & External OS Environments
+Phase 15.5   — Cross-Platform Desktop Packaging & Real Distribution Artifacts
 ```
 
 All 75 canonical problem definitions, execution tier boundaries, safety gate invariants, verification precedence rules, and cross-platform CI pipelines are established, validated, and protected by permanent regression tests.
@@ -203,6 +204,63 @@ cd ..
 # Build native desktop installers (creates installer in src-tauri/target/release/bundle/):
 npm run tauri build
 ```
+
+### 6.8 Desktop Distribution Packages (Phase 15.5)
+
+Phase 15.5 introduces pre-compiled, self-contained desktop distribution packages across Windows, Linux, and macOS. These packages bundle the complete Tauri frontend and the standalone FastAPI backend (`pc-doctor-backend`), eliminating the need for host Python, Node.js, or dev servers.
+
+#### Windows Distribution
+1. **Windows Installer (`PC_Doctor_WINDOWS_INSTALLER.exe`):**
+   * Double-click the installer and follow the setup wizard.
+   * Installs into `%LOCALAPPDATA%\Programs\PC Doctor`.
+   * Creates Start Menu and Desktop shortcuts.
+   * Automatically starts and stops the bundled backend on launch/close.
+2. **Windows Portable (`PC_Doctor_WINDOWS_PORTABLE.zip`):**
+   * Extract the ZIP archive to any directory.
+   * Double-click `run_portable.bat`.
+   * The bundled standalone backend spawns automatically on `127.0.0.1:8765`, probes `/health`, and opens the application interface.
+   * To shut down, press any key in the launcher console or run `stop_portable.bat`.
+   * No developer Python or Node installation is required.
+
+#### Linux Distribution
+1. **Debian / Ubuntu (`PC_Doctor_LINUX.deb`):**
+   * Recommended for Debian, Ubuntu, Linux Mint, Pop!_OS, and derivatives.
+   * Install via terminal:
+     ```bash
+     sudo dpkg -i PC_Doctor_LINUX.deb || sudo apt-get install -f
+     ```
+   * Launches via Application Menu or typing `pc-doctor` in terminal.
+2. **Fedora / RHEL / openSUSE (`PC_Doctor_LINUX.rpm`):**
+   * Recommended for RPM-based distributions (Fedora, RHEL, CentOS Stream, openSUSE).
+   * Install via terminal:
+     ```bash
+     sudo dnf install ./PC_Doctor_LINUX.rpm   # Fedora/RHEL
+     sudo zypper install ./PC_Doctor_LINUX.rpm # openSUSE
+     ```
+3. **General Portable Linux (`PC_Doctor_LINUX.AppImage`):**
+   * Broad portable option across modern Linux desktop distributions.
+   * Make executable and launch:
+     ```bash
+     chmod +x PC_Doctor_LINUX.AppImage
+     ./PC_Doctor_LINUX.AppImage
+     ```
+   * *Compatibility Limitation:* On modern distributions (Ubuntu 22.04+, Debian 12+) where FUSE 2 is deprecated, install `libfuse2` if the AppImage prompts for FUSE support (`sudo apt install libfuse2`).
+4. **Architectural Distinction Reminder:**
+   * **Target Package Managers:** APT, DNF, Pacman, Zypper, and APK are supported developer-environment package managers that PC Doctor *diagnoses and repairs*.
+   * **Distribution Formats:** `.deb`, `.rpm`, and `.AppImage` are the packaging formats used to *distribute the PC Doctor application itself*.
+
+#### macOS Distribution
+1. **Apple Disk Image (`PC_Doctor.dmg`):**
+   * Recommended primary distribution format for macOS (Universal: Apple Silicon arm64 + Intel x86_64).
+   * Double-click `PC_Doctor.dmg` to mount the disk image.
+   * Drag `PC Doctor.app` into the `/Applications` folder.
+   * Unmount the DMG.
+2. **Signing & Notarization Status:**
+   * Packages are **ad-hoc signed** for internal and team testing; they are **unnotarized** because Apple Developer certificates are deliberately excluded from the public git repository.
+   * *Gatekeeper Override:* On first launch, macOS Gatekeeper may flag the unnotarized binary. Right-click `PC Doctor.app` in `/Applications` -> Click **Open** -> Click **Open** in the dialog; or run:
+     ```bash
+     xattr -cr /Applications/"PC Doctor.app"
+     ```
 
 ---
 

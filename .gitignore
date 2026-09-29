@@ -81,10 +81,15 @@ scratch/*
 !scratch/cross_platform_live_validation.py
 !scratch/run_phase15_3_cross_platform_ci.py
 !scratch/phase15_3_cross_platform_ci_results.*
+!scratch/run_phase15_5_packaging_validation.py
+!scratch/phase15_5_distribution_matrix.*
+!scratch/create_portable_package.py
+!scratch/test_portable_resource_validation.py
 *.zip
 *.tar
 *.tar.gz
 *.7z
+dist_portable/
 .tmp/
 temp/
 

@@ -367,8 +367,26 @@ async def connection_status():
 
 
 # ─── Static files (serve frontend dist) ───────────────────────────────────────
-frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
-if frontend_dist.exists():
+frontend_dist_env = os.getenv("FRONTEND_DIST", "").strip()
+frontend_dist = None
+if frontend_dist_env and Path(frontend_dist_env).exists():
+    frontend_dist = Path(frontend_dist_env)
+else:
+    candidates = [
+        Path(__file__).parent.parent / "frontend" / "dist",
+        Path(__file__).parent / "frontend" / "dist",
+        Path(__file__).parent / "frontend-dist",
+        Path(sys.executable).parent / "frontend-dist",
+        Path(sys.executable).parent / "frontend" / "dist",
+        Path("frontend/dist"),
+        Path("frontend-dist"),
+    ]
+    for c in candidates:
+        if c.exists() and (c / "index.html").exists():
+            frontend_dist = c
+            break
+
+if frontend_dist and frontend_dist.exists():
     from fastapi.staticfiles import StaticFiles
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
 
