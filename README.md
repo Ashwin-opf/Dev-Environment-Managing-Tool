@@ -80,6 +80,7 @@ PC Doctor provides pre-compiled desktop distribution packages across Windows, Li
 - **Linux**: Debian package (`PC_Doctor_LINUX.deb`), RPM package (`PC_Doctor_LINUX.rpm`), and portable AppImage (`PC_Doctor_LINUX.AppImage`).
 - **macOS**: Drag-and-drop disk image (`PC_Doctor.dmg`) and application bundle (`PC_Doctor.app`).
 - **FastAPI Backend**: Self-contained PyInstaller executable bundled inside each package; no host Python or development runtime is required.
+- **Readiness**: Ready for internal / team distribution and cross-platform CI validation (public production release additionally requires platform-specific signing and notarization).
 
 ## Notes
 

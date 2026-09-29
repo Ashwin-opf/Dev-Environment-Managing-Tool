@@ -76,6 +76,7 @@ Prior to Phase 15.5, PC Doctor was verified as a hybrid developer-environment to
    * Target architecture: `x86_64`.
    * Standard installation path: `%LOCALAPPDATA%\Programs\PC Doctor`.
    * Uninstaller and Start Menu shortcuts included.
+   * **Evidence Status (`GITHUB_HOSTED_WINDOWS`):** Validated in GitHub-hosted Windows virtual runner (`windows-latest`). Because the local Windows development machine enforces WDAC / AppLocker application control policies blocking custom build scripts in user directories (`os error 4551`), local native Windows execution evidence is authoritatively established on the portable ZIP (`NATIVE_WINDOWS & GITHUB_HOSTED_WINDOWS`).
 
 ---
 
@@ -93,9 +94,9 @@ Prior to Phase 15.5, PC Doctor was verified as a hybrid developer-environment to
      * Installed via `sudo dpkg -i PC_Doctor_LINUX.deb` or `sudo apt install ./PC_Doctor_LINUX.deb`.
      * Installs desktop entry in `/usr/share/applications/` and binary in `/usr/bin/`.
   3. **RPM Package (`PC_Doctor_LINUX.rpm`):**
-     * Generated and validated for Fedora, RHEL, CentOS, openSUSE.
-     * Installed via `sudo dnf install ./PC_Doctor_LINUX.rpm` or `sudo rpm -ivh PC_Doctor_LINUX.rpm`.
-     * Package structure validated via `rpm -qp --info` and `rpm -qlp`.
+     * Generated for Fedora, RHEL, CentOS, openSUSE targets.
+     * Package structure, files, and metadata validated via `rpm -qp --info` and `rpm -qlp`.
+     * **Launch & Runtime Status (`NOT_TESTED`):** Native installation and execution tests on RPM distributions are explicitly marked `NOT_TESTED`. The Ubuntu-based CI environment cannot natively run RPM package management, and native RPM launch testing remains reserved for future bare-metal or physical Fedora/RHEL hardware testing.
 
 ---
 
@@ -239,19 +240,30 @@ SHA256_PENDING_CI_MACOS_RUNNER  PC_Doctor.dmg
 ## 13. Final Distribution Matrix
 
 | Platform | Artifact | Build | Install/Extract | Launch | Backend | Smoke Test | Evidence |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Windows** | `PC_Doctor_WINDOWS_INSTALLER.exe` | PASS | PASS | PASS | PASS | PASS | `GITHUB_HOSTED_WINDOWS` |
 | **Windows** | `PC_Doctor_WINDOWS_PORTABLE.zip` | PASS | PASS | PASS | PASS | PASS | `NATIVE_WINDOWS & GITHUB_HOSTED_WINDOWS` |
 | **Linux** | `PC_Doctor_LINUX.AppImage` | PASS | PASS | PASS | PASS | PASS | `GITHUB_HOSTED_LINUX` |
 | **Linux** | `PC_Doctor_LINUX.deb` | PASS | PASS | PASS | PASS | PASS | `GITHUB_HOSTED_LINUX` |
-| **Linux** | `PC_Doctor_LINUX.rpm` | PASS | PASS | NOT_TESTED | PASS | PASS | `GITHUB_HOSTED_LINUX` |
+| **Linux** | `PC_Doctor_LINUX.rpm` | PASS | PASS | NOT_TESTED | PASS | NOT_TESTED | `GITHUB_HOSTED_LINUX` |
 | **macOS** | `PC_Doctor.app` | PASS | PASS | PASS | PASS | PASS | `GITHUB_HOSTED_MACOS` |
 | **macOS** | `PC_Doctor.dmg` | PASS | PASS | PASS | PASS | PASS | `GITHUB_HOSTED_MACOS` |
+
+> [!NOTE]
+> * **Linux RPM Evidence Calibration:** Package structure, installation scripts, and metadata are verified via `rpm -qp --info` and `rpm -qlp`. Native RPM launch and runtime smoke tests are marked `NOT_TESTED` in the Ubuntu CI environment; native launch validation is reserved for physical or bare-metal Fedora/RHEL hardware testing.
+> * **Windows Evidence Calibration:** `PC_Doctor_WINDOWS_PORTABLE.zip` is natively extracted, executed, and verified on the local host (`NATIVE_WINDOWS & GITHUB_HOSTED_WINDOWS`). The Windows NSIS installer is validated in GitHub Actions hosted runners (`GITHUB_HOSTED_WINDOWS`) to account for local developer machine WDAC/AppLocker application control constraints (`os error 4551`).
 
 ---
 
 ## Conclusion & Readiness
 
-Phase 15.5 completes the desktop distribution requirements without modifying the 75-problem taxonomy, the Safety Gate, or the core architecture. All three operating system families possess dedicated packaging formats, verified standalone backends, automated CI workflows, and authoritative checksums.
+Phase 15.5 establishes the packaging architecture, standalone backend bundling, multi-OS distribution matrix, and automated GitHub Actions workflow without modifying the 75-problem taxonomy, the Safety Gate, or the core architecture.
 
-**Status: READY FOR DISTRIBUTION**
+**Status: READY FOR INTERNAL / TEAM DISTRIBUTION AND CROSS-PLATFORM CI VALIDATION**
+
+> [!IMPORTANT]
+> **Production Public Release Pre-requisite:**
+> This status reflects verified internal, team-level distribution and CI automation. A public production release will additionally require platform-specific code signing and notarization:
+> 1. **Windows:** Microsoft Authenticode certificate (EV recommended) to establish immediate SmartScreen reputation without user security prompts.
+> 2. **macOS:** Apple Developer ID certificate and automated Apple Notary Service ticket stapling (`xcrun notarytool`) to satisfy default Gatekeeper security policies.
+> 3. **Linux:** GPG signing for repository distributions (e.g. APT and DNF repos) and package integrity verification.

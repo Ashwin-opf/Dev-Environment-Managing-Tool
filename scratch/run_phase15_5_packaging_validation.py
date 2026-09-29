@@ -148,11 +148,11 @@ def run_phase15_5_validation():
             "backend_status": "PASS",
             "frontend_status": "PASS",
             "resource_status": "PASS",
-            "smoke_test_status": "PASS",
+            "smoke_test_status": "NOT_TESTED",
             "signing_status": "unsigned (test/internal distribution)",
             "notarization_status": "not_applicable",
             "evidence_type": "GITHUB_HOSTED_LINUX",
-            "limitations": "Package structure validated via rpm inspection; native execution reserved for future physical RHEL/Fedora hardware",
+            "limitations": "Package structure validated via rpm inspection; native launch and smoke test NOT_TESTED, reserved for future physical RHEL/Fedora hardware",
             "sha256": "PENDING_CI_BUILD (generated on ubuntu-latest runner)"
         },
         {
@@ -248,7 +248,8 @@ NOTES:
     print(f"Generated Distribution Checksums: {checksums_path}")
     
     print("\n" + "=" * 75)
-    print("PHASE 15.5 DISTRIBUTION MATRIX VALIDATION COMPLETE: ALL PASS")
+    print("PHASE 15.5 DISTRIBUTION MATRIX VALIDATION COMPLETE:")
+    print("READY FOR INTERNAL / TEAM DISTRIBUTION AND CROSS-PLATFORM CI VALIDATION")
     print("=" * 75)
 
 if __name__ == "__main__":

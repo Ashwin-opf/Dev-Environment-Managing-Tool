@@ -203,3 +203,6 @@ python scratch/run_phase15_5_packaging_validation.py
 # Trigger .github/workflows/build-distributions.yml on GitHub
 ```
 
+*Distribution Readiness: Ready for internal / team distribution and cross-platform CI validation. Production public release will additionally require platform-specific code signing (Authenticode EV) and notarization (Apple Developer ID).*
+
+

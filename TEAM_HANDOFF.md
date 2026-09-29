@@ -215,12 +215,14 @@ Phase 15.5 introduces pre-compiled, self-contained desktop distribution packages
    * Installs into `%LOCALAPPDATA%\Programs\PC Doctor`.
    * Creates Start Menu and Desktop shortcuts.
    * Automatically starts and stops the bundled backend on launch/close.
+   * *Evidence Calibration (`GITHUB_HOSTED_WINDOWS`):* Validated in GitHub Actions hosted Windows runners (`windows-latest`). Local Windows validation is authoritatively established via the portable ZIP due to local developer machine WDAC/AppLocker execution policies.
 2. **Windows Portable (`PC_Doctor_WINDOWS_PORTABLE.zip`):**
    * Extract the ZIP archive to any directory.
    * Double-click `run_portable.bat`.
    * The bundled standalone backend spawns automatically on `127.0.0.1:8765`, probes `/health`, and opens the application interface.
    * To shut down, press any key in the launcher console or run `stop_portable.bat`.
    * No developer Python or Node installation is required.
+   * *Evidence Calibration (`NATIVE_WINDOWS & GITHUB_HOSTED_WINDOWS`):* Fully validated locally in an isolated directory and on CI runners.
 
 #### Linux Distribution
 1. **Debian / Ubuntu (`PC_Doctor_LINUX.deb`):**
@@ -237,6 +239,7 @@ Phase 15.5 introduces pre-compiled, self-contained desktop distribution packages
      sudo dnf install ./PC_Doctor_LINUX.rpm   # Fedora/RHEL
      sudo zypper install ./PC_Doctor_LINUX.rpm # openSUSE
      ```
+   * *Evidence Calibration (`NOT_TESTED` for native launch):* Package structure, files, and metadata are validated via `rpm -qp --info` and `rpm -qlp`. Native RPM launch testing remains marked `NOT_TESTED` in the Ubuntu CI environment, reserved for physical Fedora/RHEL hardware testing.
 3. **General Portable Linux (`PC_Doctor_LINUX.AppImage`):**
    * Broad portable option across modern Linux desktop distributions.
    * Make executable and launch:
@@ -261,6 +264,10 @@ Phase 15.5 introduces pre-compiled, self-contained desktop distribution packages
      ```bash
      xattr -cr /Applications/"PC Doctor.app"
      ```
+
+#### Distribution Readiness
+* **Status:** `READY FOR INTERNAL / TEAM DISTRIBUTION AND CROSS-PLATFORM CI VALIDATION`
+* **Production Public Release Pre-requisite:** Public production distribution will additionally require platform-specific code signing and notarization (Microsoft Authenticode EV certificate for Windows SmartScreen, Apple Developer ID with notary service stapling for macOS Gatekeeper, and GPG repository signing for Linux packages).
 
 ---
 
