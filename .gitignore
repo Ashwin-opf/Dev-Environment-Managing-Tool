@@ -79,6 +79,8 @@ frontend/target/
 # Scratch & temporary dev files
 scratch/*
 !scratch/cross_platform_live_validation.py
+!scratch/run_phase15_3_cross_platform_ci.py
+!scratch/phase15_3_cross_platform_ci_results.*
 *.zip
 *.tar
 *.tar.gz
