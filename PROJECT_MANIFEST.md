@@ -81,7 +81,6 @@ pc-doc/
 │   ├── phase15_results.json                                  # N=75 canonical evaluation records
 │   ├── test_postfix_rq5_live.py                              # Live production post-fix RQ5 test script
 │   └── test_windows_native_live.py                           # Bare-metal Windows native validation suite
-├── main.py                              # Backend startup entry point (FastAPI server on 8765)
 ├── README.md                            # High-level project summary
 ├── TEAM_HANDOFF.md                      # Comprehensive team handoff guide
 ├── PROJECT_MANIFEST.md                  # This document
@@ -100,7 +99,7 @@ pc-doc/
 
 | Subsystem | Entry Point File | Description | Verification Method |
 | :--- | :--- | :--- | :--- |
-| **Backend Server** | [`main.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/main.py) | Initializes FastAPI app, mounts routes, starts Uvicorn on `127.0.0.1:8765` | Run `python main.py` |
+| **Backend Server** | [`backend/main.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/main.py) | Initializes FastAPI app, mounts routes, starts Uvicorn on `127.0.0.1:8765` | Run `python backend/main.py` |
 | **Frontend Shell** | [`frontend/index.html`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/frontend/index.html) | Single-page UI with diagnosis dashboard, repair console, and settings | Serve via Tauri or `npm run dev` |
 | **Tauri Desktop** | [`src-tauri/src/main.rs`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/src-tauri/src/main.rs) | Rust binary: spawns Python backend child process, creates native window | Run `npm run tauri dev` |
 | **Execution Engine**| [`backend/execution_engine.py`](file:///c:/Users/srira/.gemini/antigravity/scratch/pc-doc/backend/execution_engine.py) | Sole mutation boundary (`CentralizedExecutionEngine`) | Covered by regression suites |
@@ -143,7 +142,7 @@ cd frontend && npm install && cd ..
 ### 4.2 Run in Development
 ```bash
 # Backend standalone
-python main.py
+python backend/main.py
 
 # Tauri desktop application
 npm run tauri dev

@@ -171,7 +171,7 @@ python backend/populate_static_db.py
 ### 6.5 Running in Development Mode
 ```bash
 # Terminal 1: Launch FastAPI backend server (Runs on http://127.0.0.1:8765)
-python main.py
+python backend/main.py
 
 # Terminal 2 (Optional standalone frontend dev server):
 cd frontend
