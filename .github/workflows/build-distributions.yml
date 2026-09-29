@@ -53,9 +53,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build Production Frontend
+      - name: Install Node Dependencies & Build Frontend
         shell: pwsh
         run: |
+          npm install
           Set-Location frontend
           npm install
           npm run build
@@ -86,24 +87,35 @@ jobs:
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Tauri Desktop Installer (NSIS & MSI)
+      - name: Build Tauri Desktop Installer (NSIS)
         shell: pwsh
         run: |
           cargo check --manifest-path src-tauri/Cargo.toml
-          # Build Tauri release bundle
-          npx tauri build --bundles nsis,msi
+          # Build Tauri NSIS release bundle
+          npx --yes @tauri-apps/cli build --ci --no-sign --bundles nsis
           
           # Discover and standardize installer artifact
-          $nsis = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis" -Filter "*.exe" -Recurse | Select-Object -First 1
+          $nsis = Get-ChildItem -Path "src-tauri\target\release" -Filter "*setup*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $nsis -and (Test-Path "src-tauri\target\release\bundle\nsis")) {
+            $nsis = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
           if ($nsis) {
             Copy-Item $nsis.FullName -Destination "PC_Doctor_WINDOWS_INSTALLER.exe"
             Write-Host "Windows NSIS Installer found: $($nsis.FullName) -> PC_Doctor_WINDOWS_INSTALLER.exe"
           } else {
-            Write-Host "Note: NSIS bundle not generated, verifying standalone release binary..."
-            $app = Get-ChildItem -Path "src-tauri\target\release" -Filter "*.exe" | Where-Object { $_.Name -notlike "*build*" } | Select-Object -First 1
+            Write-Host "Note: NSIS bundle not found, checking standalone release binary..."
+            $app = Get-ChildItem -Path "src-tauri\target\release" -Filter "*.exe" -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*build*" } | Select-Object -First 1
             if ($app) {
               Copy-Item $app.FullName -Destination "PC_Doctor_WINDOWS_INSTALLER.exe"
+              Write-Host "Standalone binary copied as installer fallback: PC_Doctor_WINDOWS_INSTALLER.exe"
+            } else {
+              Write-Error "Failed to produce Windows installer or binary."
+              exit 1
             }
+          }
+          if (-not (Test-Path "PC_Doctor_WINDOWS_INSTALLER.exe")) {
+            Write-Error "PC_Doctor_WINDOWS_INSTALLER.exe was not created."
+            exit 1
           }
 
       - name: Compute Checksums (Windows)
@@ -172,8 +184,9 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build Production Frontend
+      - name: Install Node Dependencies & Build Frontend
         run: |
+          npm install
           cd frontend
           npm install
           npm run build
@@ -185,17 +198,17 @@ jobs:
 
       - name: Build Tauri Linux Bundles (AppImage & DEB)
         run: |
-          npx tauri build --bundles appimage,deb
+          npx --yes @tauri-apps/cli build --ci --no-sign --bundles appimage,deb
 
       - name: Package RPM Distribution
         run: |
           mkdir -p artifacts_linux
           # Locate DEB and convert to RPM via alien
-          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -n 1)
+          DEB_FILE=$(find src-tauri/target/release/bundle/deb -name "*.deb" 2>/dev/null | head -n 1)
           if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
             echo "Converting $DEB_FILE to RPM..."
             sudo alien -r --scripts "$DEB_FILE"
-            RPM_FILE=$(ls *.rpm | head -n 1)
+            RPM_FILE=$(ls *.rpm 2>/dev/null | head -n 1)
             if [ -n "$RPM_FILE" ] && [ -f "$RPM_FILE" ]; then
               cp "$RPM_FILE" artifacts_linux/PC_Doctor_LINUX.rpm
               echo "RPM package generated: artifacts_linux/PC_Doctor_LINUX.rpm"
@@ -204,7 +217,7 @@ jobs:
           fi
           
           # Locate AppImage
-          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -n 1)
+          APPIMAGE_FILE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" 2>/dev/null | head -n 1)
           if [ -n "$APPIMAGE_FILE" ] && [ -f "$APPIMAGE_FILE" ]; then
             cp "$APPIMAGE_FILE" artifacts_linux/PC_Doctor_LINUX.AppImage
             chmod +x artifacts_linux/PC_Doctor_LINUX.AppImage
@@ -277,8 +290,9 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build Production Frontend
+      - name: Install Node Dependencies & Build Frontend
         run: |
+          npm install
           cd frontend
           npm install
           npm run build
@@ -290,21 +304,21 @@ jobs:
 
       - name: Build Tauri macOS Bundles (.app & .dmg)
         run: |
-          npx tauri build --bundles app,dmg
+          npx --yes @tauri-apps/cli build --ci --no-sign --bundles app,dmg
 
       - name: Package macOS Artifacts
         run: |
           mkdir -p artifacts_macos
           
           # Locate .dmg
-          DMG_FILE=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -n 1)
+          DMG_FILE=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -n 1)
           if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
             cp "$DMG_FILE" artifacts_macos/PC_Doctor.dmg
             echo "DMG artifact copied: artifacts_macos/PC_Doctor.dmg"
           fi
           
           # Locate .app and archive
-          APP_DIR=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d | head -n 1)
+          APP_DIR=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d 2>/dev/null | head -n 1)
           if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
             tar -czf artifacts_macos/PC_Doctor.app.tar.gz -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
             echo "APP bundle archived: artifacts_macos/PC_Doctor.app.tar.gz"
@@ -361,6 +375,36 @@ jobs:
           path: dist_all/macos
         continue-on-error: true
 
+      - name: Validate Expected Distribution Artifacts Exist
+        run: |
+          echo "=== Verifying All 7 Distribution Artifacts ==="
+          MISSING=0
+          check_file() {
+            local path="$1"
+            local desc="$2"
+            if [ -f "$path" ] && [ -s "$path" ]; then
+              local size=$(wc -c < "$path" | tr -d ' ')
+              echo "[PASS] $desc: $path ($size bytes)"
+            else
+              echo "[FAIL] $desc missing or empty: $path"
+              MISSING=$((MISSING + 1))
+            fi
+          }
+
+          check_file "dist_all/windows/PC_Doctor_WINDOWS_INSTALLER.exe" "Windows Installer"
+          check_file "dist_all/windows/PC_Doctor_WINDOWS_PORTABLE.zip" "Windows Portable ZIP"
+          check_file "dist_all/linux/PC_Doctor_LINUX.AppImage" "Linux AppImage"
+          check_file "dist_all/linux/PC_Doctor_LINUX.deb" "Linux DEB Package"
+          check_file "dist_all/linux/PC_Doctor_LINUX.rpm" "Linux RPM Package"
+          check_file "dist_all/macos/PC_Doctor.dmg" "macOS DMG"
+          check_file "dist_all/macos/PC_Doctor.app.tar.gz" "macOS Application Archive"
+
+          if [ $MISSING -gt 0 ]; then
+            echo "Error: $MISSING expected distribution artifact(s) missing or failed in upstream build jobs!"
+            exit 1
+          fi
+          echo "All 7 distribution artifacts verified present and non-empty!"
+
       - name: Assemble Master Checksums & Summary
         run: |
           echo "=========================================================="
@@ -409,3 +453,10 @@ jobs:
           echo "FastAPI backend bundled in all packages: YES (PyInstaller standalone backend)" >> $GITHUB_STEP_SUMMARY
           echo "Host developer Python required: NO" >> $GITHUB_STEP_SUMMARY
           echo "Host developer environment required: NO" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Consolidated Distribution Checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-checksums-final
+          path: summary/DISTRIBUTION_CHECKSUMS.txt
+          retention-days: 30
